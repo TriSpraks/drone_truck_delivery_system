@@ -1,0 +1,15 @@
+[project]
+name = "test"
+version = "0.1.0"   # ✅ valid semantic version
+description = ""
+authors = [
+    {name = "Keerthana430", email = "keerthanakrisuj@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11,<3.14"   # ✅ put your Python version constraint here
+dependencies = [
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
