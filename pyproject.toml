@@ -8,6 +8,10 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11,<3.14"   # ✅ put your Python version constraint here
 dependencies = [
+    "pandas (>=2.3.2,<3.0.0)",
+    "requests (>=2.32.5,<3.0.0)",
+    "python-dotenv (>=1.1.1,<2.0.0)",
+    "sqlite-utils (>=3.38,<4.0)"
 ]
 
 [build-system]

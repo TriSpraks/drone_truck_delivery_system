@@ -2,13 +2,18 @@ import asyncio
 from libsql_client import create_client
 from . import config
 
+# Global database client (singleton)
 _client = None
-DB_BATCH_SIZE = 50  # Default batch size for inserts
 
+# Default batch size for inserting nodes
+DB_BATCH_SIZE = 50  
 
 # ----------------- Client Management -----------------
 def get_client():
-    """Get or create a LibSQL client."""
+    """
+    Get or create a global LibSQL client.
+    Lazy initialization: client is created only when first needed.
+    """
     global _client
     if _client is None:
         _client = create_client(
@@ -17,18 +22,20 @@ def get_client():
         )
     return _client
 
-
 async def close_client():
-    """Close the client connection."""
+    """Close the global client connection and reset it to None."""
     global _client
     if _client:
         await _client.close()
         _client = None
 
-
 # ----------------- Initialization -----------------
 async def init_db():
-    """Create required tables if they do not exist."""
+    """
+    Initialize database tables:
+    - generated_nodes: stores delivery nodes
+    - vehicle_matrix: stores distance, duration, total_cost per vehicle
+    """
     client = get_client()
     try:
         await client.execute("""
@@ -50,28 +57,28 @@ async def init_db():
                 dest_id TEXT,
                 vehicle_type TEXT,
                 distance REAL,
+                duration REAL,
                 total_cost REAL
             )
         """)
 
+        # Create unique index to prevent duplicate vehicle_matrix entries
         try:
             await client.execute("""
                 CREATE UNIQUE INDEX vehicle_matrix_unique_idx
                 ON vehicle_matrix(origin_id, dest_id, vehicle_type)
             """)
         except Exception:
-            # ignore if already exists
-            pass
+            pass  # index already exists
 
         print("Database initialized successfully.")
     except Exception as e:
         print("Error initializing DB:", e)
         raise
 
-
 # ----------------- Clearing -----------------
 async def clear_nodes():
-    """Clear both nodes and vehicle matrix."""
+    """Clear all data from generated_nodes and vehicle_matrix."""
     client = get_client()
     try:
         await client.execute("DELETE FROM vehicle_matrix;")
@@ -80,10 +87,12 @@ async def clear_nodes():
         print("Error clearing tables:", e)
         raise
 
-
 # ----------------- Inserts -----------------
 async def insert_nodes_bulk(nodes):
-    """Insert nodes in async batches."""
+    """
+    Insert multiple nodes in batches.
+    Each node must include: node_id, weight, volume, lon, lat, elevation.
+    """
     client = get_client()
     query = """
         INSERT INTO generated_nodes (node_id, weight, volume, lon, lat, elevation)
@@ -98,11 +107,10 @@ async def insert_nodes_bulk(nodes):
             ]) for n in batch
         ])
 
-
 async def insert_vehicle_matrix_bulk(matrix_list, batch_size=500):
     """
-    Bulk insert vehicle matrix entries efficiently.
-    Each entry: [origin_id, dest_id, vehicle_type, distance, total_cost]
+    Insert vehicle_matrix entries in bulk.
+    Each row should be: [origin_id, dest_id, vehicle_type, distance, duration, total_cost]
     """
     client = get_client()
     if not matrix_list:
@@ -110,32 +118,30 @@ async def insert_vehicle_matrix_bulk(matrix_list, batch_size=500):
 
     for i in range(0, len(matrix_list), batch_size):
         batch = matrix_list[i:i + batch_size]
-
         values = []
         params = []
         for j, row in enumerate(batch):
-            offset = j * 5
-            values.append(
-                f"($${offset+1}, $${offset+2}, $${offset+3}, $${offset+4}, $${offset+5})"
-            )
+            offset = j * 6
+            values.append(f"($${offset+1}, $${offset+2}, $${offset+3}, $${offset+4}, $${offset+5}, $${offset+6})")
             params.extend(row)
 
         query = f"""
             INSERT INTO vehicle_matrix
-            (origin_id, dest_id, vehicle_type, distance, total_cost)
+            (origin_id, dest_id, vehicle_type, distance, duration, total_cost)
             VALUES {", ".join(values)}
             ON CONFLICT(origin_id, dest_id, vehicle_type) DO NOTHING
         """
-
         try:
             await client.execute(query, params)
         except Exception as e:
             print(f"[Bulk Insert Error] Batch starting at {i} | Error: {e}")
 
-
 # ----------------- Queries -----------------
 async def get_nodes():
-    """Fetch all nodes."""
+    """
+    Fetch all generated nodes from the database.
+    Returns a list of dictionaries with node details.
+    """
     client = get_client()
     rows = await client.execute("SELECT * FROM generated_nodes;")
     return [
@@ -151,9 +157,11 @@ async def get_nodes():
         for r in rows
     ]
 
-
 async def get_vehicle_matrix():
-    """Fetch all vehicle matrix entries."""
+    """
+    Fetch all vehicle_matrix entries from the database.
+    Returns a list of dictionaries with distance, duration, and total_cost.
+    """
     client = get_client()
     rows = await client.execute("SELECT * FROM vehicle_matrix;")
     return [
@@ -163,7 +171,8 @@ async def get_vehicle_matrix():
             "dest_id": r[2],
             "vehicle_type": r[3],
             "distance": r[4],
-            "total_cost": r[5],
+            "duration": r[5],
+            "total_cost": r[6],
         }
         for r in rows
     ]
