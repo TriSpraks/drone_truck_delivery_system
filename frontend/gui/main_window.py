@@ -20,8 +20,9 @@ from PyQt5.QtCore import QTimer, QUrl, Qt, QThread, pyqtSignal, QMutex
 from PyQt5.QtGui import QFont, QIcon
 
 # Import from other modules
-from config.app_config import (DARK_STYLE, DEFAULT_DEPOT_COORDS, MAP_CENTER, MAP_ZOOM, 
-                              DEFAULT_WAVES, PAUSE_BETWEEN_WAVES, VEHICLE_SPEEDS, VEHICLE_WEIGHTS)
+from config.app_config import DARK_STYLE
+from utils.backend_connector import (DEFAULT_DEPOT_COORDS, MAP_CENTER, MAP_ZOOM,
+                                   DEFAULT_WAVES, PAUSE_BETWEEN_WAVES, VEHICLE_SPEEDS, VEHICLE_WEIGHTS)
 from core.data_manager import VehicleData, DataSimulator
 from core.api_handler import OptimizedRouteManager  # Use the corrected unified route manager
 from widgets.vehicle_control import VehicleControlPanel
