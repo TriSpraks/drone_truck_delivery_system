@@ -80,6 +80,7 @@ class OptimizedRouteBuilder(QThread):
                         "speed": VEHICLE_SPEEDS[assignment["type"]],
                         "progress": 0.0,
                         "weight": random.randint(*VEHICLE_WEIGHTS[assignment["type"]]),
+                        "volume": random.randint(10000, 80000),  # Add volume in cm³ (10-80 liters)
                         "assigned_delivery": assignment["primary_delivery"],
                         "all_deliveries": route_data.get("all_deliveries", [assignment["primary_delivery"]])
                     }
@@ -234,33 +235,65 @@ class IndiaAirspaceMap(QMainWindow):
         """Generate delivery points with improved distribution"""
         points = []
         depot_lat, depot_lon = self.depot_coords
-        
+    
+        # First, add the depot node
+        depot_node = {
+            "node_id": "depot",             # Unique ID
+            "type": "depot",                # Node type (used in routing logic)
+            "weight": 0,                    # Depot has no demand
+            "volume": 0,                    # Depot has no demand
+            "lon": depot_lon,               # Longitude from depot coords
+            "lat": depot_lat,               # Latitude from depot coords
+            "coords": [depot_lat, depot_lon]  # Keep original coords format for compatibility
+        }
+    
         # Create points in concentric circles for better coverage
         circles = min(5, max(1, self.customer_count // 15))  # Better circle calculation
         points_per_circle = self.customer_count // circles
         remaining_points = self.customer_count % circles
-        
+    
         for circle in range(circles):
             circle_points = points_per_circle + (1 if circle < remaining_points else 0)
             base_distance = 10 + (circle * 15)  # 10km, 25km, 40km, etc.
-            
+        
             for i in range(circle_points):
                 # Better angle distribution to avoid clustering
                 angle = (i * (360 / max(1, circle_points))) + random.uniform(-8, 8)
                 distance_km = base_distance + random.uniform(-2, 10)
-                
+            
                 # Convert to lat/lon offset
                 lat_offset = (distance_km / 111.32) * math.cos(math.radians(angle))
                 lon_offset = (distance_km / (111.32 * math.cos(math.radians(depot_lat)))) * math.sin(math.radians(angle))
-                
+            
                 point_lat = depot_lat + lat_offset
                 point_lon = depot_lon + lon_offset
-                
-                points.append([point_lat, point_lon])
-        
-        # Shuffle for random assignment
+            
+                # Generate volume for customer (using normal distribution)
+                volume = max(1000, random.normalvariate(50000, 20000))  # Volume in cm³, minimum 1000
+            
+                # Create customer node
+                customer_node = {
+                    "node_id": f"cust_{len(points) + 1}",      # Unique ID (cust_1, cust_2, ...)
+                    "type": "customer",                        # Node type
+                    "weight": random.uniform(1.0, 5.0),       # Customer weight in kg
+                    "volume": round(volume, 0),                # Volume in cm³, rounded
+                    "lon": point_lon,                          # Longitude
+                    "lat": point_lat,                          # Latitude
+                    "coords": [point_lat, point_lon]           # Keep original coords format for compatibility
+                }
+            
+                points.append(customer_node)
+    
+    # Shuffle for random assignment
         random.shuffle(points)
-        return points
+    
+    # Return list that includes depot + customer points, but maintain original format for backwards compatibility
+    # The function originally returned just coordinate lists, so we'll return the coords but store the full data
+        self.depot_node = depot_node  # Store depot data as instance variable
+        self.customer_nodes = points  # Store customer data as instance variables
+    
+    # Return coordinate lists for backward compatibility
+        return [point["coords"] for point in points]
     
     def create_optimal_delivery_assignments(self):
         """Create delivery assignments ensuring ALL points are covered with multi-delivery support"""
@@ -681,6 +714,7 @@ class IndiaAirspaceMap(QMainWindow):
                         "route": v["route"][:25],  # Limit route points for performance
                         "speed": v["speed"],
                         "weight": v["weight"],
+                        "volume": v.get("volume", "N/A"),
                         "delivery_count": len(v.get("all_deliveries", [v["assigned_delivery"]]))
                     }
                     for name, v in batch
