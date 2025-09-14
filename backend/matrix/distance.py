@@ -170,13 +170,5 @@ async def compute_distances(nodes):
     print("Backend: all distances computed successfully.")
 
     # --- Optional debug: write distances to CSV ---
-    os.makedirs("data", exist_ok=True)
-    csv_path = "data/distances_debug.csv"
-    with open(csv_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["origin_id", "dest_id", "truck_km", "truck_duration", "drone_km", "drone_duration"])
-        writer.writerows(dist_rows)
-
-    print(f"🔎 Debug CSV written: {csv_path}")
 
     return dist_rows
