@@ -10,8 +10,10 @@ import time
 import math
 import random
 import threading
+import asyncio
 from typing import List, Dict, Optional
 from collections import defaultdict
+import aiohttp
 
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                            QLabel, QFrame, QToolBar, QAction, QMessageBox, QProgressDialog)
@@ -20,8 +22,9 @@ from PyQt5.QtCore import QTimer, QUrl, Qt, QThread, pyqtSignal, QMutex
 from PyQt5.QtGui import QFont, QIcon
 
 # Import from other modules
-from config.app_config import (DARK_STYLE, DEFAULT_DEPOT_COORDS, MAP_CENTER, MAP_ZOOM, 
-                              DEFAULT_WAVES, PAUSE_BETWEEN_WAVES, VEHICLE_SPEEDS, VEHICLE_WEIGHTS)
+from config.app_config import DARK_STYLE
+from utils.backend_connector import (DEFAULT_DEPOT_COORDS, MAP_CENTER, MAP_ZOOM,
+                                   DEFAULT_WAVES, PAUSE_BETWEEN_WAVES, VEHICLE_SPEEDS, VEHICLE_WEIGHTS)
 from core.data_manager import VehicleData, DataSimulator
 from core.api_handler import OptimizedRouteManager  # Use the corrected unified route manager
 from widgets.vehicle_control import VehicleControlPanel
@@ -79,6 +82,7 @@ class OptimizedRouteBuilder(QThread):
                         "speed": VEHICLE_SPEEDS[assignment["type"]],
                         "progress": 0.0,
                         "weight": random.randint(*VEHICLE_WEIGHTS[assignment["type"]]),
+                        "volume": random.randint(10000, 80000),  # Add volume in cm³ (10-80 liters)
                         "assigned_delivery": assignment["primary_delivery"],
                         "all_deliveries": route_data.get("all_deliveries", [assignment["primary_delivery"]])
                     }
@@ -179,27 +183,30 @@ class IndiaAirspaceMap(QMainWindow):
         
         # Generate delivery points around selected depot based on customer count
         self.delivery_points = self.generate_delivery_points_around_depot()
-        
+
         self.map_ready = False
         self.setup_ui()
         self.setup_data_simulator()
         self.create_map_file()
-        
+
         # Movement timer - optimized update frequency
         self.timer = QTimer()
         self.timer.timeout.connect(self.tick_vehicle_movement)
         self.timer.start(1000)  # Reduced to 1 second for better performance
-        
+
         # Map update timer - separate from movement for efficiency
         self.map_update_timer = QTimer()
         self.map_update_timer.timeout.connect(self.update_map_display)
         self.map_update_timer.start(2000)  # Update map every 2 seconds
-        
+
         # Batch update flag
         self.pending_map_update = False
-        
+
         # Open in full screen
         self.showMaximized()
+
+        # Process nodes and trigger backend computations after UI is shown
+        QTimer.singleShot(1000, self.start_backend_processing)
     
     def _is_valid_widget(self, widget):
         """Check if widget is valid and not destroyed"""
@@ -213,6 +220,101 @@ class IndiaAirspaceMap(QMainWindow):
             return True
         except (RuntimeError, AttributeError):
             return False
+
+    def start_backend_processing(self):
+        """Start backend processing asynchronously in a separate thread"""
+        from PyQt5.QtCore import QThread, pyqtSignal
+
+        class BackendProcessor(QThread):
+            finished = pyqtSignal()
+            error = pyqtSignal(str)
+
+            def run(self):
+                try:
+                    # Create new event loop for this thread
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.process_nodes_and_computations())
+                    loop.close()
+                    self.finished.emit()
+                except Exception as e:
+                    self.error.emit(str(e))
+
+            async def process_nodes_and_computations(self):
+                """Async method to process nodes and trigger automatic backend computations"""
+                try:
+                    # Insert nodes to backend (this will automatically trigger computations)
+                    insert_success = await self.insert_nodes_to_backend()
+                    if not insert_success:
+                        print("Node insertion and computation failed")
+                        return
+
+                    print("Backend processing completed successfully (nodes inserted and computations triggered automatically)")
+
+                except Exception as e:
+                    print(f"❌ Error in backend processing: {e}")
+
+            async def insert_nodes_to_backend(self):
+                """Insert generated delivery points to backend database via API"""
+                if not hasattr(self.parent, 'customer_nodes') or not self.parent.customer_nodes:
+                    print("No customer nodes to insert")
+                    return False
+
+                try:
+                    # Prepare nodes data for backend API
+                    nodes_data = []
+                    for node in self.parent.customer_nodes:
+                        nodes_data.append({
+                            "node_id": node["node_id"],
+                            "weight": node["weight"],
+                            "volume": node["volume"],
+                            "lon": node["lon"],
+                            "lat": node["lat"]
+                        })
+
+                    # Add depot node
+                    if hasattr(self.parent, 'depot_node'):
+                        nodes_data.insert(0, {
+                            "node_id": self.parent.depot_node["node_id"],
+                            "weight": self.parent.depot_node["weight"],
+                            "volume": self.parent.depot_node["volume"],
+                            "lon": self.parent.depot_node["lon"],
+                            "lat": self.parent.depot_node["lat"]
+                        })
+
+                    print(f"Inserting {len(nodes_data)} nodes to backend database...")
+
+                    # Insert nodes via backend API
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            "http://127.0.0.1:8000/api/nodes/insert",
+                            json=nodes_data,
+                            headers={"Content-Type": "application/json"}
+                        ) as response:
+                            if response.status == 200:
+                                result = await response.json()
+                                print(f"Successfully inserted {result.get('inserted', 0)} nodes to backend")
+                                return True
+                            else:
+                                error_text = await response.text()
+                                print(f"Failed to insert nodes: {response.status} - {error_text}")
+                                return False
+
+                except aiohttp.ClientError as e:
+                    print(f"Network error inserting nodes: {e}")
+                    return False
+                except Exception as e:
+                    print(f"Error inserting nodes: {e}")
+                    return False
+
+
+
+        # Create and start the processor thread
+        self.backend_processor = BackendProcessor()
+        self.backend_processor.parent = self  # Pass reference to parent
+        self.backend_processor.finished.connect(lambda: print("Backend processing thread finished"))
+        self.backend_processor.error.connect(lambda err: print(f"Backend processing error: {err}"))
+        self.backend_processor.start()
     
     def _safe_widget_operation(self, widget, operation, *args, **kwargs):
         """Safely perform operations on widgets with error handling"""
@@ -233,33 +335,174 @@ class IndiaAirspaceMap(QMainWindow):
         """Generate delivery points with improved distribution"""
         points = []
         depot_lat, depot_lon = self.depot_coords
-        
+    
+        # First, add the depot node
+        depot_node = {
+            "node_id": "depot",             # Unique ID
+            "type": "depot",                # Node type (used in routing logic)
+            "weight": 0,                    # Depot has no demand
+            "volume": 0,                    # Depot has no demand
+            "lon": depot_lon,               # Longitude from depot coords
+            "lat": depot_lat,               # Latitude from depot coords
+            "coords": [depot_lat, depot_lon]  # Keep original coords format for compatibility
+        }
+    
         # Create points in concentric circles for better coverage
         circles = min(5, max(1, self.customer_count // 15))  # Better circle calculation
         points_per_circle = self.customer_count // circles
         remaining_points = self.customer_count % circles
-        
+    
         for circle in range(circles):
             circle_points = points_per_circle + (1 if circle < remaining_points else 0)
             base_distance = 10 + (circle * 15)  # 10km, 25km, 40km, etc.
-            
+        
             for i in range(circle_points):
                 # Better angle distribution to avoid clustering
                 angle = (i * (360 / max(1, circle_points))) + random.uniform(-8, 8)
                 distance_km = base_distance + random.uniform(-2, 10)
-                
+            
                 # Convert to lat/lon offset
                 lat_offset = (distance_km / 111.32) * math.cos(math.radians(angle))
                 lon_offset = (distance_km / (111.32 * math.cos(math.radians(depot_lat)))) * math.sin(math.radians(angle))
-                
+            
                 point_lat = depot_lat + lat_offset
                 point_lon = depot_lon + lon_offset
-                
-                points.append([point_lat, point_lon])
-        
-        # Shuffle for random assignment
+            
+                # Generate volume for customer (using normal distribution)
+                volume = max(1000, random.normalvariate(50000, 20000))  # Volume in cm³, minimum 1000
+            
+                # Create customer node
+                customer_node = {
+                    "node_id": f"cust_{len(points) + 1}",      # Unique ID (cust_1, cust_2, ...)
+                    "type": "customer",                        # Node type
+                    "weight": random.uniform(1.0, 5.0),       # Customer weight in kg
+                    "volume": round(volume, 0),                # Volume in cm³, rounded
+                    "lon": point_lon,                          # Longitude
+                    "lat": point_lat,                          # Latitude
+                    "coords": [point_lat, point_lon]           # Keep original coords format for compatibility
+                }
+            
+                points.append(customer_node)
+    
+    # Shuffle for random assignment
         random.shuffle(points)
-        return points
+    
+    # Return list that includes depot + customer points, but maintain original format for backwards compatibility
+    # The function originally returned just coordinate lists, so we'll return the coords but store the full data
+        self.depot_node = depot_node  # Store depot data as instance variable
+        self.customer_nodes = points  # Store customer data as instance variables
+    
+    # Return coordinate lists for backward compatibility
+        return [point["coords"] for point in points]
+
+    async def insert_nodes_to_backend(self):
+        """Insert generated delivery points to backend database via API"""
+        if not hasattr(self, 'customer_nodes') or not self.customer_nodes:
+            print("No customer nodes to insert")
+            return False
+
+        try:
+            # Prepare nodes data for backend API
+            nodes_data = []
+            for node in self.customer_nodes:
+                nodes_data.append({
+                    "node_id": node["node_id"],
+                    "weight": node["weight"],
+                    "volume": node["volume"],
+                    "lon": node["lon"],
+                    "lat": node["lat"]
+                })
+
+            # Add depot node
+            if hasattr(self, 'depot_node'):
+                nodes_data.insert(0, {
+                    "node_id": self.depot_node["node_id"],
+                    "weight": self.depot_node["weight"],
+                    "volume": self.depot_node["volume"],
+                    "lon": self.depot_node["lon"],
+                    "lat": self.depot_node["lat"]
+                })
+
+            print(f"Inserting {len(nodes_data)} nodes to backend database...")
+
+            # Insert nodes via backend API
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "http://127.0.0.1:8000/api/nodes/insert",
+                    json=nodes_data,
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        print(f"Successfully inserted {result.get('inserted', 0)} nodes to backend")
+                        return True
+                    else:
+                        error_text = await response.text()
+                        print(f"Failed to insert nodes: {response.status} - {error_text}")
+                        return False
+
+        except aiohttp.ClientError as e:
+            print(f"Network error inserting nodes: {e}")
+            return False
+        except Exception as e:
+            print(f"Error inserting nodes: {e}")
+            return False
+
+    async def trigger_backend_computations(self):
+        """Trigger distance and vehicle matrix computations in backend"""
+        try:
+            print("Triggering backend distance computations...")
+
+            async with aiohttp.ClientSession() as session:
+                # Compute distances
+                async with session.post("http://127.0.0.1:8000/api/compute/distances") as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        print(f"✅ Distance computation completed: {result.get('entries', 0)} entries")
+                    else:
+                        error_text = await response.text()
+                        print(f"❌ Distance computation failed: {response.status} - {error_text}")
+                        return False
+
+                # Compute vehicle matrix
+                async with session.post("http://127.0.0.1:8000/api/compute/vehicle_matrix") as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        print(f"✅ Vehicle matrix computation completed: {result.get('entries', 0)} entries")
+                        return True
+                    else:
+                        error_text = await response.text()
+                        print(f"❌ Vehicle matrix computation failed: {response.status} - {error_text}")
+                        return False
+
+        except aiohttp.ClientError as e:
+            print(f"❌ Network error triggering computations: {e}")
+            return False
+        except Exception as e:
+            print(f"❌ Error triggering computations: {e}")
+            return False
+
+    async def process_nodes_and_computations(self):
+        """Process node insertion and backend computations"""
+        try:
+            # Insert nodes to backend
+            insert_success = await self.insert_nodes_to_backend()
+            if not insert_success:
+                print("Node insertion failed, skipping computations")
+                return False
+
+            # Trigger backend computations
+            compute_success = await self.trigger_backend_computations()
+            if compute_success:
+                print("✅ Backend processing completed successfully")
+                return True
+            else:
+                print("Backend computations failed")
+                return False
+
+        except Exception as e:
+            print(f"❌ Error in backend processing: {e}")
+            return False
     
     def create_optimal_delivery_assignments(self):
         """Create delivery assignments ensuring ALL points are covered with multi-delivery support"""
@@ -680,6 +923,7 @@ class IndiaAirspaceMap(QMainWindow):
                         "route": v["route"][:25],  # Limit route points for performance
                         "speed": v["speed"],
                         "weight": v["weight"],
+                        "volume": v.get("volume", "N/A"),
                         "delivery_count": len(v.get("all_deliveries", [v["assigned_delivery"]]))
                     }
                     for name, v in batch
@@ -910,46 +1154,49 @@ class IndiaAirspaceMap(QMainWindow):
         """Handle new depot and fleet configuration"""
         if self._widgets_destroyed or self._shutdown_in_progress:
             return
-            
+
         # Store old values for comparison
         old_customer_count = self.customer_count
         old_total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
-        
+
         # Update configuration
         self.depot_coords = [lat, lng]
         self.customer_count = customer_count
         self.electric_trucks = electric_trucks
         self.fuel_trucks = fuel_trucks
         self.drones = drones
-        
+
         # Stop current vehicles if running
         if self.vehicles_started:
             self.stop_vehicles_complete()
-        
+
         # Regenerate delivery points
         self.delivery_points = self.generate_delivery_points_around_depot()
-        
+
+        # Process nodes and trigger backend computations using a separate thread
+        self._start_backend_processing_for_new_depot()
+
         # Update UI components
         try:
             if self._is_valid_widget(self.delivery_info) and hasattr(self.delivery_info, 'update_depot'):
                 self.delivery_info.update_depot(self.depot_coords, self.customer_count)
         except Exception as e:
             print(f"Error updating delivery info widget: {e}")
-            
+
         self.update_depot_and_fleet_ui()
-        
+
         # Force map update with new configuration
         if self.map_ready:
             self.reinitialize_map_optimized()
-        
+
         # Show optimization summary
         new_total_vehicles = electric_trucks + fuel_trucks + drones
         avg_deliveries_per_vehicle = math.ceil(customer_count / max(1, new_total_vehicles))
-        
+
         try:
             QMessageBox.information(
-                self, 
-                "Configuration Updated", 
+                self,
+                "Configuration Updated",
                 f"Depot and fleet configuration optimized:\n\n"
                 f"📍 New Depot: {lat:.6f}, {lng:.6f}\n"
                 f"👥 Customers: {old_customer_count} → {customer_count}\n"
@@ -963,7 +1210,36 @@ class IndiaAirspaceMap(QMainWindow):
             )
         except Exception as e:
             print(f"Error showing configuration update message: {e}")
-    
+
+    def _start_backend_processing_for_new_depot(self):
+        """Start backend processing for new depot configuration using a separate thread"""
+        from PyQt5.QtCore import QThread, pyqtSignal
+
+        class DepotBackendProcessor(QThread):
+            finished = pyqtSignal()
+            error = pyqtSignal(str)
+
+            def __init__(self, parent):
+                super().__init__()
+                self.parent = parent
+
+            def run(self):
+                try:
+                    # Create new event loop for this thread
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.parent.process_nodes_and_computations())
+                    loop.close()
+                    self.finished.emit()
+                except Exception as e:
+                    self.error.emit(str(e))
+
+        # Create and start the processor thread
+        self.depot_backend_processor = DepotBackendProcessor(self)
+        self.depot_backend_processor.finished.connect(lambda: print("Depot backend processing thread finished"))
+        self.depot_backend_processor.error.connect(lambda err: print(f"Depot backend processing error: {err}"))
+        self.depot_backend_processor.start()
+
     def stop_vehicles_complete(self):
         """Completely stop and clear all vehicles with cleanup"""
         self.vehicles_started = False

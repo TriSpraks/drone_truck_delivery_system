@@ -7,6 +7,7 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.11,<3.14"   # ✅ put your Python version constraint here
+package-mode = false
 dependencies = [
     "absl-py (==2.3.1)",
     "annotated-types (==0.7.0)",
@@ -192,7 +193,9 @@ dependencies = [
     "zipp (==3.21.0)",
     "zope-interface (==7.2)",
     "aiohttp (>=3.12.15,<4.0.0)",
-    "libsql-client (>=0.3.1,<0.4.0)"
+    "libsql-client (>=0.3.1,<0.4.0)",
+    "dotenv (>=0.9.9,<0.10.0)",
+    "qasync (>=0.27.1,<0.28.0)"
 ]
 
 [build-system]

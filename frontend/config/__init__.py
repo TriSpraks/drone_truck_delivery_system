@@ -3,9 +3,9 @@ Configuration module for India Airspace Management System
 
 This module contains application settings, themes, and configuration constants.
 """
-
-from .app_config import (
-    DARK_STYLE,
+from config.app_config import DARK_STYLE
+from utils.backend_connector import (
+    
     DEFAULT_DEPOT_COORDS,
     DEFAULT_CUSTOMER_COUNT,
     MAP_CENTER,

@@ -408,7 +408,7 @@ HTML_TEMPLATE = """
         riseOnHover: true
       }).addTo(map);
       
-      const tooltipText = `${v.name}\n${v.type}\n${v.weight}kg, ${v.speed}km/h`;
+      const tooltipText = `${v.name}\n${v.type}\nWeight: ${v.weight}kg\nVolume: ${v.volume || 'N/A'}cm³\nSpeed: ${v.speed}km/h`;
       marker.bindTooltip(tooltipText, { direction: 'top' });
       
       vehicleMarkers[v.name] = marker;
