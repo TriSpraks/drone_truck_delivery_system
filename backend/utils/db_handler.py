@@ -91,6 +91,15 @@ async def clear_vehicle_matrix():
         print("Error clearing vehicle matrix:", e)
         raise
 
+async def clear_generated_nodes():
+    """Clear only generated nodes data."""
+    client = get_client()
+    try:
+        await client.execute("DELETE FROM generated_nodes;")
+    except Exception as e:
+        print("Error clearing generated nodes:", e)
+        raise
+
 # ----------------- Inserts -----------------
 async def insert_nodes_bulk(nodes):
     """Insert multiple nodes in batches."""

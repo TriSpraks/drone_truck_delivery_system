@@ -1154,49 +1154,49 @@ class IndiaAirspaceMap(QMainWindow):
         """Handle new depot and fleet configuration"""
         if self._widgets_destroyed or self._shutdown_in_progress:
             return
-            
+
         # Store old values for comparison
         old_customer_count = self.customer_count
         old_total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
-        
+
         # Update configuration
         self.depot_coords = [lat, lng]
         self.customer_count = customer_count
         self.electric_trucks = electric_trucks
         self.fuel_trucks = fuel_trucks
         self.drones = drones
-        
+
         # Stop current vehicles if running
         if self.vehicles_started:
             self.stop_vehicles_complete()
-        
+
         # Regenerate delivery points
         self.delivery_points = self.generate_delivery_points_around_depot()
 
-        # Process nodes and trigger backend computations
-        asyncio.create_task(self.process_nodes_and_computations())
-        
+        # Process nodes and trigger backend computations using a separate thread
+        self._start_backend_processing_for_new_depot()
+
         # Update UI components
         try:
             if self._is_valid_widget(self.delivery_info) and hasattr(self.delivery_info, 'update_depot'):
                 self.delivery_info.update_depot(self.depot_coords, self.customer_count)
         except Exception as e:
             print(f"Error updating delivery info widget: {e}")
-            
+
         self.update_depot_and_fleet_ui()
-        
+
         # Force map update with new configuration
         if self.map_ready:
             self.reinitialize_map_optimized()
-        
+
         # Show optimization summary
         new_total_vehicles = electric_trucks + fuel_trucks + drones
         avg_deliveries_per_vehicle = math.ceil(customer_count / max(1, new_total_vehicles))
-        
+
         try:
             QMessageBox.information(
-                self, 
-                "Configuration Updated", 
+                self,
+                "Configuration Updated",
                 f"Depot and fleet configuration optimized:\n\n"
                 f"📍 New Depot: {lat:.6f}, {lng:.6f}\n"
                 f"👥 Customers: {old_customer_count} → {customer_count}\n"
@@ -1210,7 +1210,36 @@ class IndiaAirspaceMap(QMainWindow):
             )
         except Exception as e:
             print(f"Error showing configuration update message: {e}")
-    
+
+    def _start_backend_processing_for_new_depot(self):
+        """Start backend processing for new depot configuration using a separate thread"""
+        from PyQt5.QtCore import QThread, pyqtSignal
+
+        class DepotBackendProcessor(QThread):
+            finished = pyqtSignal()
+            error = pyqtSignal(str)
+
+            def __init__(self, parent):
+                super().__init__()
+                self.parent = parent
+
+            def run(self):
+                try:
+                    # Create new event loop for this thread
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.parent.process_nodes_and_computations())
+                    loop.close()
+                    self.finished.emit()
+                except Exception as e:
+                    self.error.emit(str(e))
+
+        # Create and start the processor thread
+        self.depot_backend_processor = DepotBackendProcessor(self)
+        self.depot_backend_processor.finished.connect(lambda: print("Depot backend processing thread finished"))
+        self.depot_backend_processor.error.connect(lambda err: print(f"Depot backend processing error: {err}"))
+        self.depot_backend_processor.start()
+
     def stop_vehicles_complete(self):
         """Completely stop and clear all vehicles with cleanup"""
         self.vehicles_started = False
