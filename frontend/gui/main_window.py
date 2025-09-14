@@ -10,8 +10,10 @@ import time
 import math
 import random
 import threading
+import asyncio
 from typing import List, Dict, Optional
 from collections import defaultdict
+import aiohttp
 
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                            QLabel, QFrame, QToolBar, QAction, QMessageBox, QProgressDialog)
@@ -181,27 +183,30 @@ class IndiaAirspaceMap(QMainWindow):
         
         # Generate delivery points around selected depot based on customer count
         self.delivery_points = self.generate_delivery_points_around_depot()
-        
+
         self.map_ready = False
         self.setup_ui()
         self.setup_data_simulator()
         self.create_map_file()
-        
+
         # Movement timer - optimized update frequency
         self.timer = QTimer()
         self.timer.timeout.connect(self.tick_vehicle_movement)
         self.timer.start(1000)  # Reduced to 1 second for better performance
-        
+
         # Map update timer - separate from movement for efficiency
         self.map_update_timer = QTimer()
         self.map_update_timer.timeout.connect(self.update_map_display)
         self.map_update_timer.start(2000)  # Update map every 2 seconds
-        
+
         # Batch update flag
         self.pending_map_update = False
-        
+
         # Open in full screen
         self.showMaximized()
+
+        # Process nodes and trigger backend computations after UI is shown
+        QTimer.singleShot(1000, self.start_backend_processing)
     
     def _is_valid_widget(self, widget):
         """Check if widget is valid and not destroyed"""
@@ -215,6 +220,101 @@ class IndiaAirspaceMap(QMainWindow):
             return True
         except (RuntimeError, AttributeError):
             return False
+
+    def start_backend_processing(self):
+        """Start backend processing asynchronously in a separate thread"""
+        from PyQt5.QtCore import QThread, pyqtSignal
+
+        class BackendProcessor(QThread):
+            finished = pyqtSignal()
+            error = pyqtSignal(str)
+
+            def run(self):
+                try:
+                    # Create new event loop for this thread
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.process_nodes_and_computations())
+                    loop.close()
+                    self.finished.emit()
+                except Exception as e:
+                    self.error.emit(str(e))
+
+            async def process_nodes_and_computations(self):
+                """Async method to process nodes and trigger automatic backend computations"""
+                try:
+                    # Insert nodes to backend (this will automatically trigger computations)
+                    insert_success = await self.insert_nodes_to_backend()
+                    if not insert_success:
+                        print("Node insertion and computation failed")
+                        return
+
+                    print("Backend processing completed successfully (nodes inserted and computations triggered automatically)")
+
+                except Exception as e:
+                    print(f"❌ Error in backend processing: {e}")
+
+            async def insert_nodes_to_backend(self):
+                """Insert generated delivery points to backend database via API"""
+                if not hasattr(self.parent, 'customer_nodes') or not self.parent.customer_nodes:
+                    print("No customer nodes to insert")
+                    return False
+
+                try:
+                    # Prepare nodes data for backend API
+                    nodes_data = []
+                    for node in self.parent.customer_nodes:
+                        nodes_data.append({
+                            "node_id": node["node_id"],
+                            "weight": node["weight"],
+                            "volume": node["volume"],
+                            "lon": node["lon"],
+                            "lat": node["lat"]
+                        })
+
+                    # Add depot node
+                    if hasattr(self.parent, 'depot_node'):
+                        nodes_data.insert(0, {
+                            "node_id": self.parent.depot_node["node_id"],
+                            "weight": self.parent.depot_node["weight"],
+                            "volume": self.parent.depot_node["volume"],
+                            "lon": self.parent.depot_node["lon"],
+                            "lat": self.parent.depot_node["lat"]
+                        })
+
+                    print(f"Inserting {len(nodes_data)} nodes to backend database...")
+
+                    # Insert nodes via backend API
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            "http://127.0.0.1:8000/api/nodes/insert",
+                            json=nodes_data,
+                            headers={"Content-Type": "application/json"}
+                        ) as response:
+                            if response.status == 200:
+                                result = await response.json()
+                                print(f"Successfully inserted {result.get('inserted', 0)} nodes to backend")
+                                return True
+                            else:
+                                error_text = await response.text()
+                                print(f"Failed to insert nodes: {response.status} - {error_text}")
+                                return False
+
+                except aiohttp.ClientError as e:
+                    print(f"Network error inserting nodes: {e}")
+                    return False
+                except Exception as e:
+                    print(f"Error inserting nodes: {e}")
+                    return False
+
+
+
+        # Create and start the processor thread
+        self.backend_processor = BackendProcessor()
+        self.backend_processor.parent = self  # Pass reference to parent
+        self.backend_processor.finished.connect(lambda: print("Backend processing thread finished"))
+        self.backend_processor.error.connect(lambda err: print(f"Backend processing error: {err}"))
+        self.backend_processor.start()
     
     def _safe_widget_operation(self, widget, operation, *args, **kwargs):
         """Safely perform operations on widgets with error handling"""
@@ -294,6 +394,115 @@ class IndiaAirspaceMap(QMainWindow):
     
     # Return coordinate lists for backward compatibility
         return [point["coords"] for point in points]
+
+    async def insert_nodes_to_backend(self):
+        """Insert generated delivery points to backend database via API"""
+        if not hasattr(self, 'customer_nodes') or not self.customer_nodes:
+            print("No customer nodes to insert")
+            return False
+
+        try:
+            # Prepare nodes data for backend API
+            nodes_data = []
+            for node in self.customer_nodes:
+                nodes_data.append({
+                    "node_id": node["node_id"],
+                    "weight": node["weight"],
+                    "volume": node["volume"],
+                    "lon": node["lon"],
+                    "lat": node["lat"]
+                })
+
+            # Add depot node
+            if hasattr(self, 'depot_node'):
+                nodes_data.insert(0, {
+                    "node_id": self.depot_node["node_id"],
+                    "weight": self.depot_node["weight"],
+                    "volume": self.depot_node["volume"],
+                    "lon": self.depot_node["lon"],
+                    "lat": self.depot_node["lat"]
+                })
+
+            print(f"Inserting {len(nodes_data)} nodes to backend database...")
+
+            # Insert nodes via backend API
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "http://127.0.0.1:8000/api/nodes/insert",
+                    json=nodes_data,
+                    headers={"Content-Type": "application/json"}
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        print(f"Successfully inserted {result.get('inserted', 0)} nodes to backend")
+                        return True
+                    else:
+                        error_text = await response.text()
+                        print(f"Failed to insert nodes: {response.status} - {error_text}")
+                        return False
+
+        except aiohttp.ClientError as e:
+            print(f"Network error inserting nodes: {e}")
+            return False
+        except Exception as e:
+            print(f"Error inserting nodes: {e}")
+            return False
+
+    async def trigger_backend_computations(self):
+        """Trigger distance and vehicle matrix computations in backend"""
+        try:
+            print("Triggering backend distance computations...")
+
+            async with aiohttp.ClientSession() as session:
+                # Compute distances
+                async with session.post("http://127.0.0.1:8000/api/compute/distances") as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        print(f"✅ Distance computation completed: {result.get('entries', 0)} entries")
+                    else:
+                        error_text = await response.text()
+                        print(f"❌ Distance computation failed: {response.status} - {error_text}")
+                        return False
+
+                # Compute vehicle matrix
+                async with session.post("http://127.0.0.1:8000/api/compute/vehicle_matrix") as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        print(f"✅ Vehicle matrix computation completed: {result.get('entries', 0)} entries")
+                        return True
+                    else:
+                        error_text = await response.text()
+                        print(f"❌ Vehicle matrix computation failed: {response.status} - {error_text}")
+                        return False
+
+        except aiohttp.ClientError as e:
+            print(f"❌ Network error triggering computations: {e}")
+            return False
+        except Exception as e:
+            print(f"❌ Error triggering computations: {e}")
+            return False
+
+    async def process_nodes_and_computations(self):
+        """Process node insertion and backend computations"""
+        try:
+            # Insert nodes to backend
+            insert_success = await self.insert_nodes_to_backend()
+            if not insert_success:
+                print("Node insertion failed, skipping computations")
+                return False
+
+            # Trigger backend computations
+            compute_success = await self.trigger_backend_computations()
+            if compute_success:
+                print("✅ Backend processing completed successfully")
+                return True
+            else:
+                print("Backend computations failed")
+                return False
+
+        except Exception as e:
+            print(f"❌ Error in backend processing: {e}")
+            return False
     
     def create_optimal_delivery_assignments(self):
         """Create delivery assignments ensuring ALL points are covered with multi-delivery support"""
@@ -963,6 +1172,9 @@ class IndiaAirspaceMap(QMainWindow):
         
         # Regenerate delivery points
         self.delivery_points = self.generate_delivery_points_around_depot()
+
+        # Process nodes and trigger backend computations
+        asyncio.create_task(self.process_nodes_and_computations())
         
         # Update UI components
         try:

@@ -1,3 +1,4 @@
+
 # vehicle.py
 from utils import config  # project-specific configuration constants
 

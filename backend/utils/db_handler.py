@@ -1,19 +1,15 @@
+
 import asyncio
 from libsql_client import create_client
-from . import config
+from utils import config
 
-# Global database client (singleton)
+# Global async database client (singleton)
 _client = None
-
-# Default batch size for inserting nodes
-DB_BATCH_SIZE = 50  
+DB_BATCH_SIZE = 50  # Batch size for inserts
 
 # ----------------- Client Management -----------------
 def get_client():
-    """
-    Get or create a global LibSQL client.
-    Lazy initialization: client is created only when first needed.
-    """
+    """Get or create a global LibSQL async client."""
     global _client
     if _client is None:
         _client = create_client(
@@ -23,7 +19,7 @@ def get_client():
     return _client
 
 async def close_client():
-    """Close the global client connection and reset it to None."""
+    """Close the global client session."""
     global _client
     if _client:
         await _client.close()
@@ -31,27 +27,26 @@ async def close_client():
 
 # ----------------- Initialization -----------------
 async def init_db():
-    """
-    Initialize database tables:
-    - generated_nodes: stores delivery nodes
-    - vehicle_matrix: stores distance, duration, total_cost per vehicle
-    """
+    """Create tables if they do not exist."""
     client = get_client()
     try:
+        # Clear and recreate tables on initialization
+        await client.execute("DROP TABLE IF EXISTS generated_nodes;")
+        await client.execute("DROP TABLE IF EXISTS vehicle_matrix;")
+
         await client.execute("""
-            CREATE TABLE IF NOT EXISTS generated_nodes (
+            CREATE TABLE generated_nodes (
                 id INTEGER PRIMARY KEY,
                 node_id TEXT UNIQUE,
                 weight REAL,
                 volume REAL,
                 lon REAL,
-                lat REAL,
-                elevation REAL
-            )
+                lat REAL
+            );
         """)
 
         await client.execute("""
-            CREATE TABLE IF NOT EXISTS vehicle_matrix (
+            CREATE TABLE vehicle_matrix (
                 id INTEGER PRIMARY KEY,
                 origin_id TEXT,
                 dest_id TEXT,
@@ -59,26 +54,26 @@ async def init_db():
                 distance REAL,
                 duration REAL,
                 total_cost REAL
-            )
+            );
         """)
 
-        # Create unique index to prevent duplicate vehicle_matrix entries
+        # Unique index to prevent duplicates
         try:
             await client.execute("""
                 CREATE UNIQUE INDEX vehicle_matrix_unique_idx
-                ON vehicle_matrix(origin_id, dest_id, vehicle_type)
+                ON vehicle_matrix(origin_id, dest_id, vehicle_type);
             """)
         except Exception:
             pass  # index already exists
 
-        print("Database initialized successfully.")
+        print("Database initialized successfully (async).")
     except Exception as e:
         print("Error initializing DB:", e)
         raise
 
 # ----------------- Clearing -----------------
 async def clear_nodes():
-    """Clear all data from generated_nodes and vehicle_matrix."""
+    """Clear all data from tables."""
     client = get_client()
     try:
         await client.execute("DELETE FROM vehicle_matrix;")
@@ -87,31 +82,39 @@ async def clear_nodes():
         print("Error clearing tables:", e)
         raise
 
+async def clear_vehicle_matrix():
+    """Clear only vehicle matrix data."""
+    client = get_client()
+    try:
+        await client.execute("DELETE FROM vehicle_matrix;")
+    except Exception as e:
+        print("Error clearing vehicle matrix:", e)
+        raise
+
 # ----------------- Inserts -----------------
 async def insert_nodes_bulk(nodes):
-    """
-    Insert multiple nodes in batches.
-    Each node must include: node_id, weight, volume, lon, lat, elevation.
-    """
+    """Insert multiple nodes in batches."""
     client = get_client()
     query = """
-        INSERT INTO generated_nodes (node_id, weight, volume, lon, lat, elevation)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT OR IGNORE INTO generated_nodes (node_id, weight, volume, lon, lat)
+        VALUES (?, ?, ?, ?, ?)
     """
+
+    inserted_count = 0
     for i in range(0, len(nodes), DB_BATCH_SIZE):
         batch = nodes[i:i + DB_BATCH_SIZE]
-        await asyncio.gather(*[
-            client.execute(query, [
-                n["node_id"], n["weight"], n["volume"],
-                n["lon"], n["lat"], n["elevation"]
-            ]) for n in batch
-        ])
+        for node in batch:
+            try:
+                await client.execute(query, [node["node_id"], node["weight"], node["volume"], node["lon"], node["lat"]])
+                inserted_count += 1
+            except Exception as e:
+                print(f"Error inserting node {node['node_id']}: {e}")
+                # Continue with other nodes
+
+    print(f"Inserted {inserted_count} nodes out of {len(nodes)}")
 
 async def insert_vehicle_matrix_bulk(matrix_list, batch_size=500):
-    """
-    Insert vehicle_matrix entries in bulk.
-    Each row should be: [origin_id, dest_id, vehicle_type, distance, duration, total_cost]
-    """
+    """Insert vehicle_matrix entries in bulk."""
     client = get_client()
     if not matrix_list:
         return
@@ -129,7 +132,7 @@ async def insert_vehicle_matrix_bulk(matrix_list, batch_size=500):
             INSERT INTO vehicle_matrix
             (origin_id, dest_id, vehicle_type, distance, duration, total_cost)
             VALUES {", ".join(values)}
-            ON CONFLICT(origin_id, dest_id, vehicle_type) DO NOTHING
+            ON CONFLICT(origin_id, dest_id, vehicle_type) DO NOTHING;
         """
         try:
             await client.execute(query, params)
@@ -138,12 +141,14 @@ async def insert_vehicle_matrix_bulk(matrix_list, batch_size=500):
 
 # ----------------- Queries -----------------
 async def get_nodes():
-    """
-    Fetch all generated nodes from the database.
-    Returns a list of dictionaries with node details.
-    """
+    """Fetch all generated nodes."""
     client = get_client()
-    rows = await client.execute("SELECT * FROM generated_nodes;")
+    result = await client.execute("SELECT * FROM generated_nodes;")
+    # Handle different response formats
+    if isinstance(result, dict):
+        rows = result.get("rows", [])
+    else:
+        rows = result
     return [
         {
             "id": r[0],
@@ -152,18 +157,19 @@ async def get_nodes():
             "volume": r[3],
             "lon": r[4],
             "lat": r[5],
-            "elevation": r[6],
         }
         for r in rows
     ]
 
 async def get_vehicle_matrix():
-    """
-    Fetch all vehicle_matrix entries from the database.
-    Returns a list of dictionaries with distance, duration, and total_cost.
-    """
+    """Fetch all vehicle matrix entries."""
     client = get_client()
-    rows = await client.execute("SELECT * FROM vehicle_matrix;")
+    result = await client.execute("SELECT * FROM vehicle_matrix;")
+    # Handle different response formats
+    if isinstance(result, dict):
+        rows = result.get("rows", [])
+    else:
+        rows = result
     return [
         {
             "id": r[0],
