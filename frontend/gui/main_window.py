@@ -1406,15 +1406,11 @@ class IndiaAirspaceMap(QMainWindow):
             print(f"Error updating noise stats: {e}")
     
     def create_map_file(self):
-        """Create the HTML map file with JavaScript"""
+        """Load the HTML map content directly without creating a file"""
         try:
-            timestamp = str(int(time.time() * 1000))
-            self.map_path = os.path.abspath(f"optimized_map_{timestamp}.html")
-            with open(self.map_path, "w", encoding="utf-8") as f:
-                f.write(HTML_TEMPLATE)
-            self.map_view.setUrl(QUrl.fromLocalFile(self.map_path))
+            self.map_view.setHtml(HTML_TEMPLATE)
         except Exception as e:
-            print(f"Error creating map file: {e}")
+            print(f"Error loading map content: {e}")
     
     def on_map_ready(self, success):
         """Initialize map when ready - shows all delivery points"""
