@@ -1,5 +1,3 @@
-
-# vehicle.py
 from utils import config  # project-specific configuration constants
 
 # ───────────────────────────────
@@ -8,49 +6,35 @@ from utils import config  # project-specific configuration constants
 class Vehicle:
     """Abstract base class for all vehicles (trucks, drones, etc.)."""
 
-    def __init__(self, id, capacity_kg, speed_kmph, capacity_m3=None):
+    def __init__(self, id, capacity_kg, speed_kmph, capacity_cm3=None):
         self.id = id
         self.capacity_kg = capacity_kg
-        self.capacity_m3 = capacity_m3  # optional volume capacity
+        self.capacity_cm3 = capacity_cm3  # optional volume capacity in cm³
         self.speed_kmph = speed_kmph
         self.route = []  # list of stops (nodes)
 
     def add_stop(self, node):
-        """Add a node to the vehicle's route."""
         self.route.append(node)
 
     def travel_time_hours(self, distance_km):
-        """Return travel time in hours for a given distance."""
-        return distance_km / self.speed_kmph
+        return distance_km / self.speed_kmph if distance_km else 0
 
-    def can_carry(self, weight_kg, volume_m3, distance_km=None):
-        """
-        Check if vehicle can carry a payload (weight and volume).
-        Subclasses can optionally check distance feasibility.
-        """
+    def can_carry(self, weight_kg, volume_cm3, distance_km=None):
         if weight_kg > self.capacity_kg:
             return False
-        if self.capacity_m3 and volume_m3 > self.capacity_m3:
+        if self.capacity_cm3 and volume_cm3 > self.capacity_cm3:
             return False
-        # If subclass defines `can_complete_route`, use it
         if hasattr(self, "can_complete_route") and distance_km is not None:
             return self.can_complete_route(distance_km)
         return True
 
     def metrics(self, distance_km):
-        """Return dictionary of metrics (time, energy, emissions, etc.).
-        Must be implemented by subclasses.
-        """
         raise NotImplementedError("Subclasses must implement metrics method")
 
     def total_cost(self, distance_km, max_energy_kwh, max_emission_kg):
-        """
-        Compute weighted total cost:
-        α*distance + β*normalized_energy + γ*normalized_emissions
-        """
         m = self.metrics(distance_km)
-        norm_energy = (m["energy_kwh"] / max_energy_kwh) if m["energy_kwh"] is not None else 0
-        norm_emission = (m["co2_kg"] / max_emission_kg) if m["co2_kg"] is not None else 0
+        norm_energy = (m["energy_kwh"] / max_energy_kwh) if m["energy_kwh"] else 0
+        norm_emission = (m["co2_kg"] / max_emission_kg) if m["co2_kg"] else 0
         return (
             config.ALPHA * distance_km
             + config.BETA * norm_energy
@@ -62,18 +46,14 @@ class Vehicle:
 # Truck Base Class
 # ───────────────────────────────
 class Truck(Vehicle):
-    """Base class for all trucks."""
-    def __init__(self, id, capacity_kg, speed_kmph, capacity_m3):
-        super().__init__(id, capacity_kg, speed_kmph, capacity_m3)
+    def __init__(self, id, capacity_kg, speed_kmph, capacity_cm3):
+        super().__init__(id, capacity_kg, speed_kmph, capacity_cm3)
 
 
 # ───────────────────────────────
-# Fuel Truck (Diesel)
+# Fuel Truck
 # ───────────────────────────────
 class FuelTruck(Truck):
-    """Diesel-powered truck."""
-
-    # Configurable constants from config
     KM_PER_LITER = config.FUEL_TRUCK_KM_PER_LITER
     PAYLOAD_KG = config.FUEL_TRUCK_PAYLOAD_KG
     PAYLOAD_CM3 = config.FUEL_TRUCK_PAYLOAD_CM3
@@ -85,28 +65,22 @@ class FuelTruck(Truck):
         super().__init__(id, self.PAYLOAD_KG, self.AVG_SPEED_KMPH, self.PAYLOAD_CM3)
 
     def fuel_consumption_l(self, distance_km):
-        """Fuel consumed in liters for a given distance."""
-        return distance_km / self.KM_PER_LITER
+        return distance_km / self.KM_PER_LITER if distance_km else 0
 
     def travel_cost_rs(self, distance_km):
-        """Cost in currency for fuel consumption."""
         return self.fuel_consumption_l(distance_km) * self.FUEL_PRICE
 
     def emission_kg(self, distance_km):
-        """CO2 emissions in kg for a given distance."""
         return self.fuel_consumption_l(distance_km) * self.DIESEL_CO2
 
     def metrics(self, distance_km):
-        """Return all relevant metrics for a trip."""
         fuel = self.fuel_consumption_l(distance_km)
-        cost = self.travel_cost_rs(distance_km)
-        co2 = self.emission_kg(distance_km)
         return {
             "time_h": self.travel_time_hours(distance_km),
             "fuel_l": fuel,
             "energy_kwh": None,
-            "cost_rs": cost,
-            "co2_kg": co2,
+            "cost_rs": self.travel_cost_rs(distance_km),
+            "co2_kg": self.emission_kg(distance_km),
             "feasible": True,
         }
 
@@ -115,9 +89,6 @@ class FuelTruck(Truck):
 # Electric Truck
 # ───────────────────────────────
 class ElectricTruck(Truck):
-    """Battery-powered electric truck."""
-
-    # Config constants
     BATTERY_KWH = config.ELECTRIC_TRUCK_BATTERY_KWH
     RANGE_KM = config.ELECTRIC_TRUCK_RANGE_KM
     PAYLOAD_KG = config.ELECTRIC_TRUCK_PAYLOAD_KG
@@ -125,38 +96,31 @@ class ElectricTruck(Truck):
     AVG_SPEED_KMPH = config.ELECTRIC_TRUCK_SPEED
     ELECTRICITY_PRICE = config.ELECTRICITY_PRICE
     GRID_CO2 = config.GRID_CO2
-    CONSUMPTION_KWH_PER_KM = BATTERY_KWH / RANGE_KM
+    CONSUMPTION_KWH_PER_KM = config.ELECTRIC_TRUCK_KWH_PER_KM
 
     def __init__(self, id):
         super().__init__(id, self.PAYLOAD_KG, self.AVG_SPEED_KMPH, self.PAYLOAD_CM3)
 
     def energy_consumption_kwh(self, distance_km):
-        """Energy consumed in kWh for a given distance."""
-        return distance_km * self.CONSUMPTION_KWH_PER_KM
+        return distance_km * self.CONSUMPTION_KWH_PER_KM if distance_km else 0
 
     def can_complete_route(self, distance_km):
-        """Check if round-trip is within battery capacity."""
         return self.energy_consumption_kwh(distance_km * 2) <= self.BATTERY_KWH
 
     def travel_cost_rs(self, distance_km):
-        """Cost of electricity for the trip."""
         return self.energy_consumption_kwh(distance_km) * self.ELECTRICITY_PRICE
 
     def emission_kg(self, distance_km):
-        """CO2 emissions from electricity grid."""
         return self.energy_consumption_kwh(distance_km) * self.GRID_CO2
 
     def metrics(self, distance_km):
-        """Return all metrics for electric truck."""
         energy = self.energy_consumption_kwh(distance_km)
-        cost = self.travel_cost_rs(distance_km)
-        co2 = self.emission_kg(distance_km)
         return {
             "time_h": self.travel_time_hours(distance_km),
             "fuel_l": None,
             "energy_kwh": energy,
-            "cost_rs": cost,
-            "co2_kg": co2,
+            "cost_rs": self.travel_cost_rs(distance_km),
+            "co2_kg": self.emission_kg(distance_km),
             "feasible": self.can_complete_route(distance_km),
         }
 
@@ -165,10 +129,8 @@ class ElectricTruck(Truck):
 # Drone
 # ───────────────────────────────
 class Drone(Vehicle):
-    """Electric drone for deliveries."""
-
     SPEED_KMPH = config.DRONE_SPEED
-    MAX_RANGE_KM = config.DRONE_MAX_RANGE
+    MAX_RANGE_KM = config.DRONE_MAX_RANGE        # total round-trip range
     PAYLOAD_KG = config.DRONE_PAYLOAD_KG
     PAYLOAD_CM3 = config.DRONE_PAYLOAD_CM3
     ELECTRICITY_PRICE = config.ELECTRICITY_PRICE
@@ -177,38 +139,75 @@ class Drone(Vehicle):
 
     def __init__(self, id):
         super().__init__(id, self.PAYLOAD_KG, self.SPEED_KMPH, self.PAYLOAD_CM3)
+        # battery life in minutes based on max range
         self.battery_life_min = (self.MAX_RANGE_KM / self.SPEED_KMPH) * 60.0
 
-    def flight_time_minutes(self, distance_km):
-        """Flight time in minutes for a given distance."""
+    def flight_time_minutes(self, distance_km: float) -> float:
+        """Time in minutes for a one-way distance."""
         return (distance_km / self.SPEED_KMPH) * 60.0
 
-    def energy_consumption_kwh(self, distance_km):
-        """Energy consumed in kWh for a flight."""
-        return distance_km * self.KWH_PER_KM
+    def energy_consumption_kwh(self, distance_km: float) -> float:
+        """Energy consumed for a one-way distance."""
+        return distance_km * self.KWH_PER_KM if distance_km else 0
 
     def can_complete_route(self, distance_km):
-        """Check if round-trip distance is within max range and battery life."""
-        return distance_km * 2 <= self.MAX_RANGE_KM and self.flight_time_minutes(distance_km * 2) <= self.battery_life_min
+        """Check if drone can do a round-trip distance."""
+        return distance_km * 2 <= self.MAX_RANGE_KM
 
-    def travel_cost_rs(self, distance_km):
-        """Electricity cost for the trip."""
+    def can_carry(self, weight_kg, volume_cm3, distance_km=None):
+        """Check payload first, then distance."""
+        if weight_kg > self.PAYLOAD_KG or volume_cm3 > self.PAYLOAD_CM3:
+            return False
+        if distance_km is not None:
+            return self.can_complete_route(distance_km)
+        return True
+    
+    def travel_cost_rs(self, distance_km: float) -> float:
+        """Cost in Rs based on electricity consumption."""
         return self.energy_consumption_kwh(distance_km) * self.ELECTRICITY_PRICE
 
-    def emission_kg(self, distance_km):
-        """CO2 emissions for the trip."""
+    def emission_kg(self, distance_km: float) -> float:
+        """CO2 emissions for given distance."""
         return self.energy_consumption_kwh(distance_km) * self.GRID_CO2
 
-    def metrics(self, distance_km):
-        """Return all relevant metrics for a drone trip."""
+    def metrics(self, distance_km: float) -> dict:
+        """Return metrics for a given one-way distance."""
         energy = self.energy_consumption_kwh(distance_km)
-        cost = self.travel_cost_rs(distance_km)
-        co2 = self.emission_kg(distance_km)
         return {
             "time_h": self.travel_time_hours(distance_km),
             "fuel_l": None,
             "energy_kwh": energy,
-            "cost_rs": cost,
-            "co2_kg": co2,
+            "cost_rs": self.travel_cost_rs(distance_km),
+            "co2_kg": self.emission_kg(distance_km),
             "feasible": self.can_complete_route(distance_km),
         }
+
+# ───────────────────────────────
+# Fleet Factory
+# ───────────────────────────────
+def create_fleet_vehicles(fleet_config=None):
+    vehicles = []
+
+    if fleet_config:
+        electric_trucks = fleet_config.get("electric_trucks", 2)
+        fuel_trucks = fleet_config.get("fuel_trucks", 1)
+        drones = fleet_config.get("drones", 3)
+
+        print(f"Creating fleet: {electric_trucks}E + {fuel_trucks}F + {drones}D")
+
+        for i in range(electric_trucks):
+            vehicles.append(ElectricTruck(id=f"E_Truck_{i+1}"))
+        for i in range(fuel_trucks):
+            vehicles.append(FuelTruck(id=f"F_Truck_{i+1}"))
+        for i in range(drones):
+            vehicles.append(Drone(id=f"Drone_{i+1}"))
+    else:
+        print("No fleet config provided, using defaults: 2E + 1F + 3D")
+        for i in range(2):
+            vehicles.append(ElectricTruck(id=f"E_Truck_{i+1}"))
+        for i in range(1):
+            vehicles.append(FuelTruck(id=f"F_Truck_{i+1}"))
+        for i in range(3):
+            vehicles.append(Drone(id=f"Drone_{i+1}"))
+
+    return vehicles

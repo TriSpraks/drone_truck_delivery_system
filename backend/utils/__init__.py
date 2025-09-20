@@ -2,7 +2,6 @@ from .config import *
 from .db_handler import (
     init_db,
     close_client,
-    clear_nodes,
     clear_generated_nodes,
     insert_nodes_bulk,
     insert_vehicle_matrix_bulk,
