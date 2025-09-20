@@ -12,3 +12,8 @@ __pycache__/
 
 # Optional: Jupyter notebooks checkpoints
 .ipynb_checkpoints/
+
+# Ignore generated HTML map files
+depot_selection_map.html
+map.html
+frontend/depot_selection_map_*.html

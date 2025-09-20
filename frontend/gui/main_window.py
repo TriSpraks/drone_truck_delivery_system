@@ -262,9 +262,9 @@ class IndiaAirspaceMap(QMainWindow):
 
                 try:
                     # Prepare nodes data for backend API
-                    nodes_data = []
+                    nodes_list = []
                     for node in self.parent.customer_nodes:
-                        nodes_data.append({
+                        nodes_list.append({
                             "node_id": node["node_id"],
                             "weight": node["weight"],
                             "volume": node["volume"],
@@ -274,7 +274,7 @@ class IndiaAirspaceMap(QMainWindow):
 
                     # Add depot node
                     if hasattr(self.parent, 'depot_node'):
-                        nodes_data.insert(0, {
+                        nodes_list.insert(0, {
                             "node_id": self.parent.depot_node["node_id"],
                             "weight": self.parent.depot_node["weight"],
                             "volume": self.parent.depot_node["volume"],
@@ -282,7 +282,17 @@ class IndiaAirspaceMap(QMainWindow):
                             "lat": self.parent.depot_node["lat"]
                         })
 
-                    print(f"Inserting {len(nodes_data)} nodes to backend database...")
+                    # Prepare the request data as expected by backend
+                    nodes_data = {
+                        "nodes": nodes_list,
+                        "vehicle_config": {
+                            "electric_trucks": self.parent.electric_trucks,
+                            "fuel_trucks": self.parent.fuel_trucks,
+                            "drones": self.parent.drones
+                        }
+                    }
+
+                    print(f"Inserting {len(nodes_list)} nodes to backend database...")
 
                     # Insert nodes via backend API
                     async with aiohttp.ClientSession() as session:
@@ -293,7 +303,7 @@ class IndiaAirspaceMap(QMainWindow):
                         ) as response:
                             if response.status == 200:
                                 result = await response.json()
-                                print(f"Successfully inserted {result.get('inserted', 0)} nodes to backend")
+                                print(f"Successfully inserted {result.get('nodes_inserted', 0)} nodes to backend")
                                 return True
                             else:
                                 error_text = await response.text()
@@ -332,68 +342,93 @@ class IndiaAirspaceMap(QMainWindow):
         return self._safe_widget_operation(widget, widget.setText, str(text))
     
     def generate_delivery_points_around_depot(self):
-        """Generate delivery points with improved distribution"""
+        """Generate delivery points with inner/outer circle split, ensuring drone eligibility for inner circle."""
         points = []
         depot_lat, depot_lon = self.depot_coords
-    
-        # First, add the depot node
+
+        # Depot node
         depot_node = {
-            "node_id": "depot",             # Unique ID
-            "type": "depot",                # Node type (used in routing logic)
-            "weight": 0,                    # Depot has no demand
-            "volume": 0,                    # Depot has no demand
-            "lon": depot_lon,               # Longitude from depot coords
-            "lat": depot_lat,               # Latitude from depot coords
-            "coords": [depot_lat, depot_lon]  # Keep original coords format for compatibility
+            "node_id": "depot",
+            "type": "depot",
+            "weight": 0,
+            "volume": 0,  # in cm³
+            "lon": round(depot_lon, 6),
+            "lat": round(depot_lat, 6),
+            "coords": [round(depot_lat, 6), round(depot_lon, 6)]
         }
-    
-        # Create points in concentric circles for better coverage
-        circles = min(5, max(1, self.customer_count // 15))  # Better circle calculation
-        points_per_circle = self.customer_count // circles
-        remaining_points = self.customer_count % circles
-    
-        for circle in range(circles):
-            circle_points = points_per_circle + (1 if circle < remaining_points else 0)
-            base_distance = 10 + (circle * 15)  # 10km, 25km, 40km, etc.
-        
-            for i in range(circle_points):
-                # Better angle distribution to avoid clustering
-                angle = (i * (360 / max(1, circle_points))) + random.uniform(-8, 8)
-                distance_km = base_distance + random.uniform(-2, 10)
-            
-                # Convert to lat/lon offset
-                lat_offset = (distance_km / 111.32) * math.cos(math.radians(angle))
-                lon_offset = (distance_km / (111.32 * math.cos(math.radians(depot_lat)))) * math.sin(math.radians(angle))
-            
-                point_lat = depot_lat + lat_offset
-                point_lon = depot_lon + lon_offset
-            
-                # Generate volume for customer (using normal distribution)
-                volume = max(1000, random.normalvariate(50000, 20000))  # Volume in cm³, minimum 1000
-            
-                # Create customer node
-                customer_node = {
-                    "node_id": f"cust_{len(points) + 1}",      # Unique ID (cust_1, cust_2, ...)
-                    "type": "customer",                        # Node type
-                    "weight": random.uniform(1.0, 5.0),       # Customer weight in kg
-                    "volume": round(volume, 0),                # Volume in cm³, rounded
-                    "lon": point_lon,                          # Longitude
-                    "lat": point_lat,                          # Latitude
-                    "coords": [point_lat, point_lon]           # Keep original coords format for compatibility
-                }
-            
-                points.append(customer_node)
-    
-    # Shuffle for random assignment
+
+        # Drone limits
+        drone_max_weight = 5.0      # kg
+        drone_max_volume = 20000    # cm³
+
+        # Split nodes 20% inner / 80% outer
+        inner_count = max(1, int(self.customer_count * 0.2))
+        outer_count = self.customer_count - inner_count
+
+        # ---------------- Inner circle (0.5–5 km) → must be drone-eligible ----------------
+        for i in range(inner_count):
+            angle = random.uniform(0, 360)
+            distance_km = random.uniform(0.5, 5.0)
+
+            lat_offset = (distance_km / 111.32) * math.cos(math.radians(angle))
+            lon_offset = (distance_km / (111.32 * math.cos(math.radians(depot_lat)))) * math.sin(math.radians(angle))
+
+            weight = round(random.uniform(0.5, drone_max_weight), 2)
+            volume = random.randint(500, drone_max_volume)
+
+            points.append({
+                "node_id": f"cust_{len(points) + 1}",
+                "type": "customer",
+                "weight": weight,
+                "volume": volume,
+                "lon": round(depot_lon + lon_offset, 6),
+                "lat": round(depot_lat + lat_offset, 6),
+                "coords": [round(depot_lat + lat_offset, 6), round(depot_lon + lon_offset, 6)]
+            })
+
+        # ---------------- Outer circle (3–60 km) → drone or truck eligible ----------------
+        for i in range(outer_count):
+            angle = random.uniform(0, 360)
+            distance_km = random.uniform(3.0, 60.0)
+
+            lat_offset = (distance_km / 111.32) * math.cos(math.radians(angle))
+            lon_offset = (distance_km / (111.32 * math.cos(math.radians(depot_lat)))) * math.sin(math.radians(angle))
+
+            # Randomly decide if drone-eligible (30% chance)
+            if random.random() < 0.3:
+                weight = round(random.uniform(0.5, drone_max_weight), 2)
+                volume = random.randint(500, drone_max_volume)
+            else:
+                weight = round(random.uniform(6.0, 15.0), 2)
+                volume = random.randint(20000, 60000)
+
+            points.append({
+                "node_id": f"cust_{len(points) + 1}",
+                "type": "customer",
+                "weight": weight,
+                "volume": volume,
+                "lon": round(depot_lon + lon_offset, 6),
+                "lat": round(depot_lat + lat_offset, 6),
+                "coords": [round(depot_lat + lat_offset, 6), round(depot_lon + lon_offset, 6)]
+            })
+
+        # Shuffle nodes so depot isn't first
         random.shuffle(points)
-    
-    # Return list that includes depot + customer points, but maintain original format for backwards compatibility
-    # The function originally returned just coordinate lists, so we'll return the coords but store the full data
-        self.depot_node = depot_node  # Store depot data as instance variable
-        self.customer_nodes = points  # Store customer data as instance variables
-    
-    # Return coordinate lists for backward compatibility
-        return [point["coords"] for point in points]
+
+        # Count drone-eligible inner circle
+        drone_eligible_count = sum(
+            1 for p in points
+            if p["weight"] <= drone_max_weight and p["volume"] <= drone_max_volume
+            and math.sqrt((p["lat"] - depot_lat)**2 + (p["lon"] - depot_lon)**2) * 111.32 <= 5
+        )
+        print(f"✅ Inner circle drone-eligible: {drone_eligible_count}/{inner_count}")
+
+        # Store nodes
+        self.depot_node = depot_node
+        self.customer_nodes = points
+
+        # Return coordinates for convenience
+        return [p["coords"] for p in points]
 
     async def insert_nodes_to_backend(self):
         """Insert generated delivery points to backend database via API"""
@@ -403,9 +438,9 @@ class IndiaAirspaceMap(QMainWindow):
 
         try:
             # Prepare nodes data for backend API
-            nodes_data = []
+            nodes_list = []
             for node in self.customer_nodes:
-                nodes_data.append({
+                nodes_list.append({
                     "node_id": node["node_id"],
                     "weight": node["weight"],
                     "volume": node["volume"],
@@ -415,7 +450,7 @@ class IndiaAirspaceMap(QMainWindow):
 
             # Add depot node
             if hasattr(self, 'depot_node'):
-                nodes_data.insert(0, {
+                nodes_list.insert(0, {
                     "node_id": self.depot_node["node_id"],
                     "weight": self.depot_node["weight"],
                     "volume": self.depot_node["volume"],
@@ -423,7 +458,17 @@ class IndiaAirspaceMap(QMainWindow):
                     "lat": self.depot_node["lat"]
                 })
 
-            print(f"Inserting {len(nodes_data)} nodes to backend database...")
+            # Prepare the request data as expected by backend
+            nodes_data = {
+                "nodes": nodes_list,
+                "vehicle_config": {
+                    "electric_trucks": self.electric_trucks,
+                    "fuel_trucks": self.fuel_trucks,
+                    "drones": self.drones
+                }
+            }
+
+            print(f"Inserting {len(nodes_list)} nodes to backend database...")
 
             # Insert nodes via backend API
             async with aiohttp.ClientSession() as session:
@@ -434,7 +479,7 @@ class IndiaAirspaceMap(QMainWindow):
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
-                        print(f"Successfully inserted {result.get('inserted', 0)} nodes to backend")
+                        print(f"Successfully inserted {result.get('nodes_inserted', 0)} nodes to backend")
                         return True
                     else:
                         error_text = await response.text()
@@ -483,21 +528,15 @@ class IndiaAirspaceMap(QMainWindow):
             return False
 
     async def process_nodes_and_computations(self):
-        """Process node insertion and backend computations"""
+        """Process node insertion (computations are handled automatically by /api/nodes/insert)"""
         try:
-            # Insert nodes to backend
+            # Insert nodes to backend (this automatically triggers computations)
             insert_success = await self.insert_nodes_to_backend()
-            if not insert_success:
-                print("Node insertion failed, skipping computations")
-                return False
-
-            # Trigger backend computations
-            compute_success = await self.trigger_backend_computations()
-            if compute_success:
+            if insert_success:
                 print("✅ Backend processing completed successfully")
                 return True
             else:
-                print("Backend computations failed")
+                print("Node insertion failed")
                 return False
 
         except Exception as e:
@@ -1406,9 +1445,12 @@ class IndiaAirspaceMap(QMainWindow):
             print(f"Error updating noise stats: {e}")
     
     def create_map_file(self):
-        """Load the HTML map content directly without creating a file"""
+        """Create or update the HTML map file with JavaScript"""
         try:
-            self.map_view.setHtml(HTML_TEMPLATE)
+            self.map_path = os.path.abspath("map.html")
+            with open(self.map_path, "w", encoding="utf-8") as f:
+                f.write(HTML_TEMPLATE)
+            self.map_view.setUrl(QUrl.fromLocalFile(self.map_path))
         except Exception as e:
             print(f"Error loading map content: {e}")
     

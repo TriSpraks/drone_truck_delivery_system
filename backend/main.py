@@ -2,10 +2,12 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import time
 
 from utils import db_handler
 from matrix.distance import compute_distances
 from matrix.matrix import generate_vehicle_matrix
+from matrix.vehicle import create_fleet_vehicles, FuelTruck, ElectricTruck, Drone
 
 # ----------------- Lifespan -----------------
 @asynccontextmanager
@@ -34,7 +36,7 @@ app.add_middleware(
 @app.get("/api/config")
 async def get_config():
     """Return configuration for frontend"""
-    config = {
+    config_data = {
         "DEFAULT_DEPOT_COORDS": [12.8500, 74.9200],
         "DEFAULT_CUSTOMER_COUNT": 5,
         "MAP_CENTER": [20.5937, 78.9629],
@@ -44,70 +46,100 @@ async def get_config():
         "VEHICLE_WEIGHTS": {"Drone": [1, 5], "Electric Truck": [200, 500], "Fuel Truck": [300, 700]},
     }
     nodes = await db_handler.get_nodes()
-    config["nodes_count"] = len(nodes)
-    return config
+    config_data["nodes_count"] = len(nodes)
+    return config_data
 
 @app.post("/api/nodes/insert")
-async def insert_nodes(nodes: list[dict]):
+async def insert_nodes(request: dict):
     """
-    MAIN ENTRY POINT: Insert nodes and trigger automatic backend computations
+    Insert nodes and vehicle data, then trigger backend computations
     """
+    start_time = time.time()
+    nodes = request.get("nodes", [])
+    vehicle_config = request.get("vehicle_config", {})
+
     if not nodes:
         raise HTTPException(status_code=400, detail="No nodes provided")
 
     print(f"Inserting {len(nodes)} nodes to database...")
+    print(f"Vehicle config received: {vehicle_config}")
 
-    # Clear generated_nodes table before insertion
+    # Clear existing tables
+    clear_start = time.time()
     await db_handler.clear_generated_nodes()
+    await db_handler.clear_vehicle_matrix()
+    await db_handler.clear_vehicles()
+    clear_time = time.time() - clear_start
 
-    # Step 1: Insert nodes to generated_nodes table
+    # Insert nodes
+    node_insert_start = time.time()
     await db_handler.insert_nodes_bulk(nodes)
-
-    # Step 2: Verify insertion
     current_nodes = await db_handler.get_nodes()
     if len(current_nodes) != len(nodes):
         raise HTTPException(status_code=500, detail="Node insertion verification failed")
+    node_insert_time = time.time() - node_insert_start
 
-    print(f"{len(nodes)} nodes inserted to generated_nodes table")
+    # Insert vehicles
+    vehicle_insert_start = time.time()
+    vehicles = create_fleet_vehicles(vehicle_config)
+    vehicle_records = []
+    for v in vehicles:
+        if isinstance(v, FuelTruck):
+            range_km = 10000.0
+        elif isinstance(v, ElectricTruck):
+            range_km = v.RANGE_KM
+        elif isinstance(v, Drone):
+            range_km = v.MAX_RANGE_KM
+        else:
+            range_km = 0.0
+        vehicle_records.append({
+            "vehicle_id": v.id,
+            "capacity_kg": v.capacity_kg,
+            "capacity_cm3": v.capacity_cm3 or 0.0,
+            "speed_kmph": v.speed_kmph,
+            "range_km": range_km,
+        })
+    await db_handler.insert_vehicles_bulk(vehicle_records)
+    vehicle_insert_time = time.time() - vehicle_insert_start
 
-    # Step 3: Backend main triggers automatic computations
-    print("Backend main triggering computations...")
+    # Compute distances
+    distance_compute_start = time.time()
+    dist_rows = await compute_distances(current_nodes)
+    matrix_entries = []
+    for row in dist_rows:
+        origin_id, dest_id, truck_km, truck_dur, drone_km, drone_dur = row
+        if truck_km is not None and truck_dur is not None:
+            matrix_entries.append([origin_id, dest_id, "truck", truck_km, truck_dur, 0.0])
+        if drone_km is not None and drone_dur is not None:
+            matrix_entries.append([origin_id, dest_id, "drone", drone_km, drone_dur, 0.0])
+    await db_handler.insert_vehicle_matrix_bulk(matrix_entries)
+    distance_compute_time = time.time() - distance_compute_start
 
-    try:
-        # Distance computation
-        print("Computing distances...")
-        dist_rows = await compute_distances(current_nodes)
+    # Generate vehicle matrix
+    vehicle_matrix_start = time.time()
+    await generate_vehicle_matrix(current_nodes, dist_rows, vehicle_config)
+    final_count = len(await db_handler.get_vehicle_matrix())
+    vehicle_matrix_time = time.time() - vehicle_matrix_start
 
-        # Clear and insert distance matrix
-        await db_handler.clear_vehicle_matrix()
-        matrix_entries = []
-        for row in dist_rows:
-            origin_id, dest_id, truck_km, truck_dur, drone_km, drone_dur = row
-            if truck_km is not None and truck_dur is not None:
-                matrix_entries.append([origin_id, dest_id, "truck", truck_km, truck_dur, 0.0])
-            if drone_km is not None and drone_dur is not None:
-                matrix_entries.append([origin_id, dest_id, "drone", drone_km, drone_dur, 0.0])
-
-        await db_handler.insert_vehicle_matrix_bulk(matrix_entries)
-        print(f"Distance matrix: {len(matrix_entries)} entries")
-
-        # Vehicle matrix generation
-        print("Generating vehicle matrix...")
-        await generate_vehicle_matrix(current_nodes, dist_rows)
-
-        final_count = len(await db_handler.get_vehicle_matrix())
-        print(f"Vehicle matrix: {final_count} entries")
-    except Exception as e:
-        print(f"Warning: Computations failed: {e}. Nodes inserted but computations skipped.")
-        final_count = 0
-        matrix_entries = []
+    total_time = time.time() - start_time
+    print(f"✅ Total backend processing completed in {total_time:.2f}s")
 
     return {
         "status": "success",
-        "message": "Nodes inserted and computations completed",
+        "message": "Nodes and vehicle data processed, computations completed",
         "nodes_inserted": len(nodes),
+        "vehicle_config": vehicle_config,
+        "vehicles_inserted": len(vehicle_records),
         "distance_entries": len(matrix_entries),
-        "vehicle_matrix_entries": final_count
+        "vehicle_matrix_entries": final_count,
+        "timing": {
+            "table_clearing": round(clear_time, 2),
+            "node_insertion": round(node_insert_time, 2),
+            "vehicle_insertion": round(vehicle_insert_time, 2),
+            "distance_computation": round(distance_compute_time, 2),
+            "vehicle_matrix_generation": round(vehicle_matrix_time, 2),
+            "total_time": round(total_time, 2)
+        }
     }
 
 @app.post("/api/compute/distances")
@@ -116,12 +148,9 @@ async def compute_distances_endpoint():
     try:
         current_nodes = await db_handler.get_nodes()
         if not current_nodes:
-            raise HTTPException(status_code=400, detail="No nodes found in database")
-
-        print(f"Computing distances for {len(current_nodes)} existing nodes...")
+            raise HTTPException(status_code=400, detail="No nodes found")
         dist_rows = await compute_distances(current_nodes)
 
-        # Clear and insert distance matrix
         await db_handler.clear_vehicle_matrix()
         matrix_entries = []
         for row in dist_rows:
@@ -130,17 +159,9 @@ async def compute_distances_endpoint():
                 matrix_entries.append([origin_id, dest_id, "truck", truck_km, truck_dur, 0.0])
             if drone_km is not None and drone_dur is not None:
                 matrix_entries.append([origin_id, dest_id, "drone", drone_km, drone_dur, 0.0])
-
         await db_handler.insert_vehicle_matrix_bulk(matrix_entries)
-        print(f"Distance matrix: {len(matrix_entries)} entries")
-
-        return {
-            "status": "success",
-            "message": "Distance computation completed",
-            "entries": len(matrix_entries)
-        }
+        return {"status": "success", "entries": len(matrix_entries)}
     except Exception as e:
-        print(f"Error computing distances: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/compute/vehicle_matrix")
@@ -149,41 +170,27 @@ async def compute_vehicle_matrix_endpoint():
     try:
         current_nodes = await db_handler.get_nodes()
         if not current_nodes:
-            raise HTTPException(status_code=400, detail="No nodes found in database")
+            raise HTTPException(status_code=400, detail="No nodes found")
 
-        # Get existing distance data
         vehicle_matrix_data = await db_handler.get_vehicle_matrix()
         if not vehicle_matrix_data:
-            raise HTTPException(status_code=400, detail="No distance data found. Compute distances first.")
+            raise HTTPException(status_code=400, detail="No distance data found")
 
-        # Convert to dist_rows format expected by generate_vehicle_matrix
+        # Reconstruct dist_rows for vehicle matrix
         dist_rows = []
         for row in vehicle_matrix_data:
-            # Find matching nodes for origin and dest
-            origin_node = next((n for n in current_nodes if n["node_id"] == row["origin_id"]), None)
-            dest_node = next((n for n in current_nodes if n["node_id"] == row["dest_id"]), None)
-            if origin_node and dest_node:
-                dist_rows.append([
-                    row["origin_id"], row["dest_id"],
-                    row["distance"] if row["vehicle_type"] == "truck" else None,
-                    row["duration"] if row["vehicle_type"] == "truck" else None,
-                    row["distance"] if row["vehicle_type"] == "drone" else None,
-                    row["duration"] if row["vehicle_type"] == "drone" else None
-                ])
+            dist_rows.append([
+                row["origin_id"], row["dest_id"],
+                row["distance"] if row["vehicle_type"] == "truck" else None,
+                row["duration"] if row["vehicle_type"] == "truck" else None,
+                row["distance"] if row["vehicle_type"] == "drone" else None,
+                row["duration"] if row["vehicle_type"] == "drone" else None
+            ])
 
-        print("Generating vehicle matrix...")
         await generate_vehicle_matrix(current_nodes, dist_rows)
-
         final_count = len(await db_handler.get_vehicle_matrix())
-        print(f"Vehicle matrix: {final_count} entries")
-
-        return {
-            "status": "success",
-            "message": "Vehicle matrix computation completed",
-            "entries": final_count
-        }
+        return {"status": "success", "entries": final_count}
     except Exception as e:
-        print(f"Error computing vehicle matrix: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------- Run -----------------
