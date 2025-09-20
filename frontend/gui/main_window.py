@@ -1452,7 +1452,7 @@ class IndiaAirspaceMap(QMainWindow):
                 f.write(HTML_TEMPLATE)
             self.map_view.setUrl(QUrl.fromLocalFile(self.map_path))
         except Exception as e:
-            print(f"Error creating map file: {e}")
+            print(f"Error loading map content: {e}")
     
     def on_map_ready(self, success):
         """Initialize map when ready - shows all delivery points"""
