@@ -17,3 +17,4 @@ __pycache__/
 depot_selection_map.html
 map.html
 frontend/depot_selection_map_*.html
+initial_solution.json

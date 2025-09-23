@@ -3,11 +3,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import time
+import json
 
 from utils import db_handler
 from matrix.distance import compute_distances
 from matrix.matrix import generate_vehicle_matrix
 from matrix.vehicle import create_fleet_vehicles, FuelTruck, ElectricTruck, Drone
+from solver.initial_solution import build_initial_solution
 
 # ----------------- Lifespan -----------------
 @asynccontextmanager
@@ -120,6 +122,18 @@ async def insert_nodes(request: dict):
     await generate_vehicle_matrix(current_nodes, dist_rows, vehicle_config)
     final_count = len(await db_handler.get_vehicle_matrix())
     vehicle_matrix_time = time.time() - vehicle_matrix_start
+ 
+    # Build initial solution
+    initial_solution = await build_initial_solution()
+
+    # Optionally save
+    import json
+    with open("initial_solution.json", "w") as f:
+        json.dump(initial_solution, f, indent=2)
+
+    print("Initial solution generated:")
+    print(initial_solution)
+
 
     total_time = time.time() - start_time
     print(f"✅ Total backend processing completed in {total_time:.2f}s")
@@ -193,6 +207,30 @@ async def compute_vehicle_matrix_endpoint():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/initial_solution")
+async def get_initial_solution():
+    """
+    Fetch nodes, vehicles, and matrix from DB and generate an initial solution.
+    Returns JSON with waves-first structure.
+    """
+    solution = await build_initial_solution()
+
+    # Round distances and costs to 4 decimals
+    for wave in solution.values():
+        for vehicle_type in ["drones", "trucks"]:
+            for v in wave[vehicle_type]:
+                if "distance" in v:
+                    v["distance"] = round(v["distance"], 4)
+                if "cost" in v:
+                    v["cost"] = round(v["cost"], 4)
+
+    # Save to JSON with arrays in single lines
+    with open("initial_solution.json", "w") as f:
+        json.dump(solution, f, indent=2, separators=(',', ': '), ensure_ascii=False)
+
+    return solution
+
+    return {"status": "success", "initial_solution": solution}
 # ----------------- Run -----------------
 if __name__ == "__main__":
     import uvicorn
