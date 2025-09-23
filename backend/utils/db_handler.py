@@ -166,3 +166,9 @@ async def get_vehicle_matrix():
     result = await client.execute("SELECT * FROM vehicle_matrix;")
     rows = result.get("rows", []) if isinstance(result, dict) else result
     return [{"id": r[0], "origin_id": r[1], "dest_id": r[2], "vehicle_type": r[3], "distance": r[4], "duration": r[5], "total_cost": r[6]} for r in rows]
+
+async def get_all_data():
+    nodes = await get_nodes()
+    vehicle_matrix = await get_vehicle_matrix()
+    vehicles = await get_vehicles()
+    return nodes, vehicle_matrix, vehicles
