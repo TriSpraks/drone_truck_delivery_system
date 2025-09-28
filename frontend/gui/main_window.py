@@ -30,7 +30,7 @@ from core.api_handler import OptimizedRouteManager  # Use the corrected unified 
 from widgets.vehicle_control import VehicleControlPanel
 from widgets.delivery_info import DeliveryInfoWidget  
 from widgets.sound_monitoring import SoundGraphWidget, NoiseStatisticsWidget
-from utils.nfz_data import get_depot_selection_no_fly_zones
+from utils.nfz_data import get_india_no_fly_zones
 from resources.map_templates import HTML_TEMPLATE
 from ui.dialog import DepotSelectionWindow
 
@@ -167,7 +167,7 @@ class IndiaAirspaceMap(QMainWindow):
         self.map_zoom = MAP_ZOOM
         
         # No-fly zones data (subset for depot selection)
-        self.no_fly_zones = get_depot_selection_no_fly_zones()
+        self.no_fly_zones = get_india_no_fly_zones()
         
         # Vehicle system
         self.vehicles = {}
@@ -590,12 +590,12 @@ class IndiaAirspaceMap(QMainWindow):
             
             # Left sidebar (300px width)
             left_panel = QFrame()
-            left_panel.setMaximumWidth(300)
-            left_panel.setMinimumWidth(250)
+            left_panel.setMaximumWidth(400)
+            left_panel.setMinimumWidth(350)
             left_layout = QVBoxLayout(left_panel)
             
             # Logo/Title
-            title_label = QLabel("Optimized Delivery System")
+            title_label = QLabel("Drone Truck Delivery System")
             title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #ff6b35; padding: 10px;")
             title_label.setAlignment(Qt.AlignCenter)
             

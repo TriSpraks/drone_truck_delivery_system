@@ -5,6 +5,8 @@ No-fly zone data for India airspace
 def get_india_no_fly_zones():
     """Comprehensive no-fly zones across India"""
     return [
+        # EXISTING ZONES (from your current data)
+        
         # Delhi NCR
         {
             'name': 'Indira Gandhi International Airport',
@@ -150,7 +152,7 @@ def get_india_no_fly_zones():
             'description': 'IAF transport base'
         },
         
-        # MANGALURU REGION - NOW INCLUDED!
+        # Mangaluru Region
         {
             'name': 'Mangaluru International Airport',
             'center': [12.9612, 74.8900],
@@ -325,15 +327,6 @@ def get_india_no_fly_zones():
             'description': 'Naval facility'
         },
         
-        # Additional zones
-        {
-            'name': 'Pokhran Test Range',
-            'center': [27.0950, 71.7517],
-            'radius': 15000,
-            'type': 'military',
-            'description': 'Nuclear test site - highly restricted'
-        },
-        
         # Punjab
         {
             'name': 'Sri Guru Ram Dass Jee International Airport',
@@ -357,7 +350,14 @@ def get_india_no_fly_zones():
             'description': 'IAF transport base'
         },
         
-        # More strategic locations
+        # Strategic Military Zones
+        {
+            'name': 'Pokhran Test Range',
+            'center': [27.0950, 71.7517],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'Nuclear test site - highly restricted'
+        },
         {
             'name': 'Kargil Military Area',
             'center': [34.5539, 76.1313],
@@ -371,12 +371,907 @@ def get_india_no_fly_zones():
             'radius': 25000,
             'type': 'military',
             'description': 'World\'s highest battlefield'
+        },
+        
+        # NEW ADDITIONS - Missing Major Zones
+        
+        # Rajasthan
+        {
+            'name': 'Jaipur International Airport',
+            'center': [26.8247, 75.8129],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Major airport in Rajasthan'
+        },
+        {
+            'name': 'Jodhpur Air Force Station',
+            'center': [26.2389, 73.0485],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'IAF fighter base'
+        },
+        {
+            'name': 'Bikaner Air Force Station',
+            'center': [28.0728, 73.2081],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'IAF transport base'
+        },
+        {
+            'name': 'Udaipur Airport',
+            'center': [24.6177, 73.8961],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        
+        # Uttar Pradesh
+        {
+            'name': 'Chaudhary Charan Singh Airport Lucknow',
+            'center': [26.7606, 80.8893],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Major UP airport'
+        },
+        {
+            'name': 'Lal Bahadur Shastri Airport Varanasi',
+            'center': [25.4520, 82.8596],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'International airport'
+        },
+        {
+            'name': 'Kanpur Airport',
+            'center': [26.4041, 80.4098],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        {
+            'name': 'Agra Airport & Air Force Station',
+            'center': [27.1577, 77.9611],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Dual use facility'
+        },
+        {
+            'name': 'Allahabad Airport',
+            'center': [25.4404, 81.7338],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        {
+            'name': 'Gorakhpur Airport',
+            'center': [26.7396, 83.4496],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        
+        # Madhya Pradesh
+        {
+            'name': 'Raja Bhoj Airport Bhopal',
+            'center': [23.2875, 77.3374],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Major MP airport'
+        },
+        {
+            'name': 'Devi Ahilya Bai Holkar Airport Indore',
+            'center': [22.7216, 75.8011],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'International airport'
+        },
+        {
+            'name': 'Gwalior Airport & Air Force Station',
+            'center': [26.2933, 78.2275],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'IAF fighter base'
+        },
+        {
+            'name': 'Jabalpur Airport',
+            'center': [23.1778, 80.0520],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        
+        # Bihar & Jharkhand
+        {
+            'name': 'Jay Prakash Narayan Airport Patna',
+            'center': [25.5913, 85.0880],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Major Bihar airport'
+        },
+        {
+            'name': 'Birsa Munda Airport Ranchi',
+            'center': [23.3144, 85.3217],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Major Jharkhand airport'
+        },
+        {
+            'name': 'Gaya Airport',
+            'center': [24.7443, 84.9512],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'International airport for Buddhist circuit'
+        },
+        
+        # Odisha
+        {
+            'name': 'Biju Patnaik Airport Bhubaneswar',
+            'center': [20.2441, 85.8180],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Major Odisha airport'
+        },
+        {
+            'name': 'Paradip Port',
+            'center': [20.2644, 86.6094],
+            'radius': 4000,
+            'type': 'port',
+            'description': 'Major port on east coast'
+        },
+        {
+            'name': 'Kalaikunda Air Force Station',
+            'center': [22.3500, 87.2167],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'IAF fighter base'
+        },
+        
+        # West Bengal (Additional)
+        {
+            'name': 'Bagdogra Airport',
+            'center': [26.6812, 88.3285],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'North Bengal airport'
+        },
+        {
+            'name': 'Haldia Port',
+            'center': [22.0333, 88.1167],
+            'radius': 3000,
+            'type': 'port',
+            'description': 'Major industrial port'
+        },
+        
+        # Himachal Pradesh
+        {
+            'name': 'Gaggal Airport Dharamshala',
+            'center': [32.1658, 76.2634],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Hill station airport'
+        },
+        {
+            'name': 'Shimla Airport',
+            'center': [31.0818, 77.0685],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Hill station airport'
+        },
+        {
+            'name': 'Kullu Manali Airport',
+            'center': [31.8763, 77.1544],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Tourism airport'
+        },
+        
+        # Uttarakhand
+        {
+            'name': 'Jolly Grant Airport Dehradun',
+            'center': [30.1897, 78.1804],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'Uttarakhand main airport'
+        },
+        {
+            'name': 'Pantnagar Airport',
+            'center': [29.0336, 79.4737],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Agricultural university airport'
+        },
+        
+        # Haryana
+        {
+            'name': 'Hisar Airport',
+            'center': [29.1796, 75.7553],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        {
+            'name': 'Sirsa Air Force Station',
+            'center': [29.5344, 75.0061],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'IAF helicopter base'
+        },
+        
+        # Jammu & Kashmir / Ladakh
+        {
+            'name': 'Sheikh ul-Alam Airport Srinagar',
+            'center': [34.0839, 74.7742],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Kashmir main airport'
+        },
+        {
+            'name': 'Jammu Airport',
+            'center': [32.6890, 74.8378],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Major J&K airport'
+        },
+        {
+            'name': 'Leh Kushok Bakula Rimpochee Airport',
+            'center': [34.1358, 77.5465],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'High-altitude Ladakh airport'
+        },
+        {
+            'name': 'Line of Control (LoC) Buffer Zone',
+            'center': [34.0000, 74.5000],
+            'radius': 30000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        
+        # Assam & Northeast
+        {
+            'name': 'Lokpriya Gopinath Bordoloi Airport Guwahati',
+            'center': [26.1061, 91.5856],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Northeast main airport'
+        },
+        {
+            'name': 'Dibrugarh Airport',
+            'center': [27.4839, 95.0169],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'Upper Assam airport'
+        },
+        {
+            'name': 'Jorhat Airport',
+            'center': [26.7318, 94.1753],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Tea capital airport'
+        },
+        {
+            'name': 'Silchar Airport',
+            'center': [24.9129, 92.9787],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Barak Valley airport'
+        },
+        {
+            'name': 'Tezpur Air Force Station',
+            'center': [26.7094, 92.7847],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Strategic northeastern IAF base'
+        },
+        {
+            'name': 'Chabua Air Force Station',
+            'center': [27.4500, 94.9500],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Forward IAF base'
+        },
+        
+        # Manipur, Mizoram, Tripura, Nagaland
+        {
+            'name': 'Imphal Airport',
+            'center': [24.7597, 93.8967],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'Manipur main airport'
+        },
+        {
+            'name': 'Lengpui Airport Aizawl',
+            'center': [23.8408, 92.6197],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Mizoram airport'
+        },
+        {
+            'name': 'Agartala Airport',
+            'center': [23.8870, 91.2403],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'Tripura main airport'
+        },
+        {
+            'name': 'Dimapur Airport',
+            'center': [25.8839, 93.7711],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Nagaland airport'
+        },
+        
+        # Meghalaya & Arunachal Pradesh
+        {
+            'name': 'Shillong Airport Umroi',
+            'center': [25.7036, 91.9097],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Meghalaya airport'
+        },
+        {
+            'name': 'Pasighat Airport',
+            'center': [28.0661, 95.3356],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Arunachal Pradesh airport'
+        },
+        {
+            'name': 'Along Airport',
+            'center': [28.1750, 94.8000],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Advanced landing ground'
+        },
+        {
+            'name': 'China Border Buffer Zone - Arunachal',
+            'center': [28.2180, 94.7278],
+            'radius': 25000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        
+        # Sikkim
+        {
+            'name': 'Pakyong Airport Gangtok',
+            'center': [27.2308, 88.5844],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Sikkim airport'
+        },
+        
+        # Chhattisgarh
+        {
+            'name': 'Swami Vivekananda Airport Raipur',
+            'center': [21.1802, 81.7388],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Chhattisgarh main airport'
+        },
+        {
+            'name': 'Jagdalpur Airport',
+            'center': [19.0717, 82.0300],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Tribal region airport'
+        },
+        
+        # Telangana (Additional)
+        {
+            'name': 'Warangal Airport',
+            'center': [17.9218, 79.5998],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        
+        # Nuclear & Space Facilities
+        {
+            'name': 'Narora Atomic Power Station',
+            'center': [28.2006, 78.3897],
+            'radius': 8000,
+            'type': 'nuclear',
+            'description': 'Nuclear power plant UP'
+        },
+        {
+            'name': 'Rawatbhata Nuclear Plant',
+            'center': [24.9266, 75.5950],
+            'radius': 8000,
+            'type': 'nuclear',
+            'description': 'Nuclear power plant Rajasthan'
+        },
+        {
+            'name': 'Tarapur Atomic Power Station',
+            'center': [19.8500, 72.6500],
+            'radius': 8000,
+            'type': 'nuclear',
+            'description': 'Nuclear power plant Maharashtra'
+        },
+        {
+            'name': 'Kaiga Nuclear Plant',
+            'center': [14.8643, 74.4385],
+            'radius': 8000,
+            'type': 'nuclear',
+            'description': 'Nuclear power plant Karnataka'
+        },
+        {
+            'name': 'VSSC Thumba',
+            'center': [8.5241, 76.8593],
+            'radius': 5000,
+            'type': 'space',
+            'description': 'ISRO rocket development center'
+        },
+        {
+            'name': 'ISRO Satellite Centre Bangalore',
+            'center': [13.0211, 77.5608],
+            'radius': 3000,
+            'type': 'space',
+            'description': 'Satellite manufacturing facility'
+        },
+        
+        # Additional Strategic Military Installations
+        {
+            'name': 'Ambala Air Force Station',
+            'center': [30.3815, 76.8045],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Major IAF fighter base'
+        },
+        {
+            'name': 'Adampur Air Force Station',
+            'center': [31.4338, 75.7581],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'IAF fighter base Punjab'
+        },
+        {
+            'name': 'Bareilly Air Force Station',
+            'center': [28.4222, 79.4508],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'IAF fighter base UP'
+        },
+        {
+            'name': 'Hindon Air Force Station',
+            'center': [28.7094, 77.3481],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Transport aircraft base Delhi NCR'
+        },
+        {
+            'name': 'Bhuj Air Force Station',
+            'center': [23.2878, 69.6700],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Strategic western border base'
+        },
+        {
+            'name': 'Jaisalmer Air Force Station',
+            'center': [26.8886, 70.8652],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Desert strike base'
+        },
+        {
+            'name': 'Suratgarh Air Force Station',
+            'center': [29.3225, 73.8981],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Transport base Rajasthan'
+        },
+        {
+            'name': 'Uttarlai Air Force Station',
+            'center': [25.2000, 71.8667],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Strategic Rajasthan base'
+        },
+        
+        # Naval Establishments
+        {
+            'name': 'INS Hansa - Goa Naval Aviation',
+            'center': [15.3808, 73.8314],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Naval aviation training base'
+        },
+        {
+            'name': 'INS Garuda - Kochi Naval Base',
+            'center': [9.9312, 76.2673],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Southern Naval Command'
+        },
+        {
+            'name': 'INS Rajali - Arakkonam Naval Air Station',
+            'center': [13.0824, 79.6866],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Naval aviation base Tamil Nadu'
+        },
+        {
+            'name': 'INS Dega - Visakhapatnam Naval Air Station',
+            'center': [17.7211, 83.2245],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Eastern Fleet aviation base'
+        },
+        {
+            'name': 'INS Hamla - Mumbai Naval Base',
+            'center': [18.9220, 72.8347],
+            'radius': 3000,
+            'type': 'military',
+            'description': 'Western Naval Command base'
+        },
+        {
+            'name': 'Karwar Naval Base (Project Seabird)',
+            'center': [14.8141, 74.1240],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Major naval base Karnataka'
+        },
+        {
+            'name': 'Chilka Naval Base',
+            'center': [19.7179, 85.3240],
+            'radius': 3000,
+            'type': 'military',
+            'description': 'Naval training establishment'
+        },
+        
+        # Border Security & Coast Guard
+        {
+            'name': 'Pakistan Border Buffer Zone - Punjab',
+            'center': [31.6040, 74.8723],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'Pakistan Border Buffer Zone - Rajasthan',
+            'center': [27.0238, 70.8022],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'Pakistan Border Buffer Zone - Gujarat',
+            'center': [23.7337, 68.8378],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'Bangladesh Border Buffer Zone - West Bengal',
+            'center': [22.6273, 88.7953],
+            'radius': 10000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'Myanmar Border Buffer Zone - Mizoram',
+            'center': [23.7271, 93.2551],
+            'radius': 10000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'China Border Buffer Zone - Sikkim',
+            'center': [27.6009, 88.9140],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'China Border Buffer Zone - Ladakh',
+            'center': [34.2996, 78.2932],
+            'radius': 30000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        
+        # Additional Ports
+        {
+            'name': 'Ennore Port',
+            'center': [13.2167, 80.3167],
+            'radius': 3000,
+            'type': 'port',
+            'description': 'Major port Tamil Nadu'
+        },
+        {
+            'name': 'Jawaharlal Nehru Port Mumbai',
+            'center': [18.9647, 72.9492],
+            'radius': 4000,
+            'type': 'port',
+            'description': 'Container port Maharashtra'
+        },
+        {
+            'name': 'Mundra Port',
+            'center': [22.8395, 69.7937],
+            'radius': 4000,
+            'type': 'port',
+            'description': 'Private port Gujarat'
+        },
+        {
+            'name': 'Pipavav Port',
+            'center': [20.9500, 71.0833],
+            'radius': 3000,
+            'type': 'port',
+            'description': 'Container port Gujarat'
+        },
+        {
+            'name': 'Kamarajar Port Ennore',
+            'center': [13.2500, 80.3333],
+            'radius': 3000,
+            'type': 'port',
+            'description': 'Coal import port'
+        },
+        
+        # Oil Refineries & Petrochemical Complexes
+        {
+            'name': 'Mathura Refinery',
+            'center': [27.4924, 77.6737],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery UP'
+        },
+        {
+            'name': 'Panipat Refinery',
+            'center': [29.3879, 76.9690],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Haryana'
+        },
+        {
+            'name': 'Barauni Refinery',
+            'center': [25.4816, 86.0336],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Bihar'
+        },
+        {
+            'name': 'Digboi Refinery',
+            'center': [27.3833, 95.6167],
+            'radius': 2000,
+            'type': 'refinery',
+            'description': 'Asia\'s oldest refinery Assam'
+        },
+        {
+            'name': 'Guwahati Refinery',
+            'center': [26.1445, 91.7362],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Assam'
+        },
+        {
+            'name': 'Bongaigaon Refinery',
+            'center': [26.4609, 90.5501],
+            'radius': 2000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Assam'
+        },
+        {
+            'name': 'Haldia Refinery',
+            'center': [22.0582, 88.0955],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery West Bengal'
+        },
+        {
+            'name': 'Paradip Refinery',
+            'center': [20.3180, 86.6503],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Odisha'
+        },
+        {
+            'name': 'Chennai Refinery',
+            'center': [13.1143, 80.3017],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Chennai Petroleum Corporation'
+        },
+        {
+            'name': 'Mangalore Refinery',
+            'center': [12.8697, 74.8860],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'MRPL refinery Karnataka'
+        },
+        {
+            'name': 'Kochi Refinery',
+            'center': [9.9816, 76.2999],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'BPCL refinery Kerala'
+        },
+        {
+            'name': 'Mumbai Refinery',
+            'center': [19.0330, 72.8570],
+            'radius': 2000,
+            'type': 'refinery',
+            'description': 'BPCL refinery Maharashtra'
+        },
+        {
+            'name': 'Vadodara Refinery',
+            'center': [22.2587, 73.1394],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Gujarat'
+        },
+        
+        # Research & Testing Facilities
+        {
+            'name': 'DRDO Chandipur',
+            'center': [21.4500, 87.0167],
+            'radius': 10000,
+            'type': 'military',
+            'description': 'Integrated test range Odisha'
+        },
+        {
+            'name': 'DRDO Hyderabad Complex',
+            'center': [17.4400, 78.4482],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Defence research laboratories'
+        },
+        {
+            'name': 'DRDO Pune Complex',
+            'center': [18.5679, 73.9143],
+            'radius': 3000,
+            'type': 'military',
+            'description': 'Armament research establishment'
+        },
+        {
+            'name': 'Terminal Ballistics Research Laboratory',
+            'center': [26.2124, 78.1772],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Weapons testing facility Chandigarh'
+        },
+        {
+            'name': 'High Energy Materials Research Laboratory',
+            'center': [18.5204, 73.8567],
+            'radius': 3000,
+            'type': 'military',
+            'description': 'Explosives research Pune'
+        },
+        
+        # Central Government Security Zones
+        {
+            'name': 'Parliament House Complex',
+            'center': [28.6172, 77.2082],
+            'radius': 2000,
+            'type': 'government',
+            'description': 'Parliament and surrounding area'
+        },
+        {
+            'name': 'Rashtrapati Bhavan Complex',
+            'center': [28.6139, 77.1999],
+            'radius': 1500,
+            'type': 'government',
+            'description': 'Presidential palace complex'
+        },
+        {
+            'name': 'Supreme Court Complex',
+            'center': [28.6229, 77.2397],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Supreme Court of India'
+        },
+        {
+            'name': 'PMO & South Block',
+            'center': [28.6127, 77.2773],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Prime Minister Office complex'
+        },
+        {
+            'name': 'Reserve Bank of India Mumbai',
+            'center': [18.9322, 72.8264],
+            'radius': 500,
+            'type': 'government',
+            'description': 'Central bank headquarters'
+        },
+        
+        # State Capital Security Zones
+        {
+            'name': 'Raj Bhavan Mumbai',
+            'center': [18.9499, 72.8048],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Maharashtra governor residence'
+        },
+        {
+            'name': 'Vidhana Soudha Bangalore',
+            'center': [12.9792, 77.5903],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Karnataka state secretariat'
+        },
+        {
+            'name': 'Fort St George Chennai',
+            'center': [13.0840, 80.2892],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Tamil Nadu secretariat'
+        },
+        {
+            'name': 'Writers Building Kolkata',
+            'center': [22.5726, 88.3639],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'West Bengal secretariat'
+        },
+        
+        # Additional High-Security Installations
+        {
+            'name': 'CBI Headquarters',
+            'center': [28.6139, 77.2090],
+            'radius': 500,
+            'type': 'government',
+            'description': 'Central investigation agency'
+        },
+        {
+            'name': 'Intelligence Bureau Delhi',
+            'center': [28.6139, 77.2073],
+            'radius': 500,
+            'type': 'government',
+            'description': 'Internal intelligence agency'
+        },
+        {
+            'name': 'RAW Headquarters',
+            'center': [28.6304, 77.2177],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'External intelligence agency'
+        },
+        
+        # Emergency & Disaster Response Centers
+        {
+            'name': 'National Disaster Response Force HQ',
+            'center': [28.5355, 77.3910],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'NDRF headquarters Ghaziabad'
+        },
+        
+        # Communication & Satellite Facilities
+        {
+            'name': 'All India Radio Delhi',
+            'center': [28.6139, 77.2090],
+            'radius': 500,
+            'type': 'government',
+            'description': 'National broadcaster headquarters'
+        },
+        {
+            'name': 'Doordarshan Kendra Delhi',
+            'center': [28.6304, 77.2177],
+            'radius': 500,
+            'type': 'government',
+            'description': 'National television broadcaster'
+        },
+        
+        # VIP Helipads & Landing Sites
+        {
+            'name': 'Palam Technical Area',
+            'center': [28.5665, 77.1031],
+            'radius': 2000,
+            'type': 'military',
+            'description': 'VIP aircraft maintenance'
+        },
+        {
+            'name': 'Safdarjung Airport',
+            'center': [28.5843, 77.2058],
+            'radius': 2000,
+            'type': 'government',
+            'description': 'Delhi flying club and emergency'
         }
     ]
 
 def get_depot_selection_no_fly_zones():
     """Get major no-fly zones for depot selection"""
     return [
+        # EXISTING ZONES (from your current data)
+        
         # Delhi NCR
         {
             'name': 'Indira Gandhi International Airport',
@@ -522,7 +1417,7 @@ def get_depot_selection_no_fly_zones():
             'description': 'IAF transport base'
         },
         
-        # MANGALURU REGION - NOW INCLUDED!
+        # Mangaluru Region
         {
             'name': 'Mangaluru International Airport',
             'center': [12.9612, 74.8900],
@@ -697,15 +1592,6 @@ def get_depot_selection_no_fly_zones():
             'description': 'Naval facility'
         },
         
-        # Additional zones
-        {
-            'name': 'Pokhran Test Range',
-            'center': [27.0950, 71.7517],
-            'radius': 15000,
-            'type': 'military',
-            'description': 'Nuclear test site - highly restricted'
-        },
-        
         # Punjab
         {
             'name': 'Sri Guru Ram Dass Jee International Airport',
@@ -729,7 +1615,14 @@ def get_depot_selection_no_fly_zones():
             'description': 'IAF transport base'
         },
         
-        # More strategic locations
+        # Strategic Military Zones
+        {
+            'name': 'Pokhran Test Range',
+            'center': [27.0950, 71.7517],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'Nuclear test site - highly restricted'
+        },
         {
             'name': 'Kargil Military Area',
             'center': [34.5539, 76.1313],
@@ -743,5 +1636,898 @@ def get_depot_selection_no_fly_zones():
             'radius': 25000,
             'type': 'military',
             'description': 'World\'s highest battlefield'
+        },
+        
+        # NEW ADDITIONS - Missing Major Zones
+        
+        # Rajasthan
+        {
+            'name': 'Jaipur International Airport',
+            'center': [26.8247, 75.8129],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Major airport in Rajasthan'
+        },
+        {
+            'name': 'Jodhpur Air Force Station',
+            'center': [26.2389, 73.0485],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'IAF fighter base'
+        },
+        {
+            'name': 'Bikaner Air Force Station',
+            'center': [28.0728, 73.2081],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'IAF transport base'
+        },
+        {
+            'name': 'Udaipur Airport',
+            'center': [24.6177, 73.8961],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        
+        # Uttar Pradesh
+        {
+            'name': 'Chaudhary Charan Singh Airport Lucknow',
+            'center': [26.7606, 80.8893],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Major UP airport'
+        },
+        {
+            'name': 'Lal Bahadur Shastri Airport Varanasi',
+            'center': [25.4520, 82.8596],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'International airport'
+        },
+        {
+            'name': 'Kanpur Airport',
+            'center': [26.4041, 80.4098],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        {
+            'name': 'Agra Airport & Air Force Station',
+            'center': [27.1577, 77.9611],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Dual use facility'
+        },
+        {
+            'name': 'Allahabad Airport',
+            'center': [25.4404, 81.7338],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        {
+            'name': 'Gorakhpur Airport',
+            'center': [26.7396, 83.4496],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        
+        # Madhya Pradesh
+        {
+            'name': 'Raja Bhoj Airport Bhopal',
+            'center': [23.2875, 77.3374],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Major MP airport'
+        },
+        {
+            'name': 'Devi Ahilya Bai Holkar Airport Indore',
+            'center': [22.7216, 75.8011],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'International airport'
+        },
+        {
+            'name': 'Gwalior Airport & Air Force Station',
+            'center': [26.2933, 78.2275],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'IAF fighter base'
+        },
+        {
+            'name': 'Jabalpur Airport',
+            'center': [23.1778, 80.0520],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        
+        # Bihar & Jharkhand
+        {
+            'name': 'Jay Prakash Narayan Airport Patna',
+            'center': [25.5913, 85.0880],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Major Bihar airport'
+        },
+        {
+            'name': 'Birsa Munda Airport Ranchi',
+            'center': [23.3144, 85.3217],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Major Jharkhand airport'
+        },
+        {
+            'name': 'Gaya Airport',
+            'center': [24.7443, 84.9512],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'International airport for Buddhist circuit'
+        },
+        
+        # Odisha
+        {
+            'name': 'Biju Patnaik Airport Bhubaneswar',
+            'center': [20.2441, 85.8180],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Major Odisha airport'
+        },
+        {
+            'name': 'Paradip Port',
+            'center': [20.2644, 86.6094],
+            'radius': 4000,
+            'type': 'port',
+            'description': 'Major port on east coast'
+        },
+        {
+            'name': 'Kalaikunda Air Force Station',
+            'center': [22.3500, 87.2167],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'IAF fighter base'
+        },
+        
+        # West Bengal (Additional)
+        {
+            'name': 'Bagdogra Airport',
+            'center': [26.6812, 88.3285],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'North Bengal airport'
+        },
+        {
+            'name': 'Haldia Port',
+            'center': [22.0333, 88.1167],
+            'radius': 3000,
+            'type': 'port',
+            'description': 'Major industrial port'
+        },
+        
+        # Himachal Pradesh
+        {
+            'name': 'Gaggal Airport Dharamshala',
+            'center': [32.1658, 76.2634],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Hill station airport'
+        },
+        {
+            'name': 'Shimla Airport',
+            'center': [31.0818, 77.0685],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Hill station airport'
+        },
+        {
+            'name': 'Kullu Manali Airport',
+            'center': [31.8763, 77.1544],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Tourism airport'
+        },
+        
+        # Uttarakhand
+        {
+            'name': 'Jolly Grant Airport Dehradun',
+            'center': [30.1897, 78.1804],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'Uttarakhand main airport'
+        },
+        {
+            'name': 'Pantnagar Airport',
+            'center': [29.0336, 79.4737],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Agricultural university airport'
+        },
+        
+        # Haryana
+        {
+            'name': 'Hisar Airport',
+            'center': [29.1796, 75.7553],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        {
+            'name': 'Sirsa Air Force Station',
+            'center': [29.5344, 75.0061],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'IAF helicopter base'
+        },
+        
+        # Jammu & Kashmir / Ladakh
+        {
+            'name': 'Sheikh ul-Alam Airport Srinagar',
+            'center': [34.0839, 74.7742],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Kashmir main airport'
+        },
+        {
+            'name': 'Jammu Airport',
+            'center': [32.6890, 74.8378],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Major J&K airport'
+        },
+        {
+            'name': 'Leh Kushok Bakula Rimpochee Airport',
+            'center': [34.1358, 77.5465],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'High-altitude Ladakh airport'
+        },
+        {
+            'name': 'Line of Control (LoC) Buffer Zone',
+            'center': [34.0000, 74.5000],
+            'radius': 30000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        
+        # Assam & Northeast
+        {
+            'name': 'Lokpriya Gopinath Bordoloi Airport Guwahati',
+            'center': [26.1061, 91.5856],
+            'radius': 6000,
+            'type': 'airport',
+            'description': 'Northeast main airport'
+        },
+        {
+            'name': 'Dibrugarh Airport',
+            'center': [27.4839, 95.0169],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'Upper Assam airport'
+        },
+        {
+            'name': 'Jorhat Airport',
+            'center': [26.7318, 94.1753],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Tea capital airport'
+        },
+        {
+            'name': 'Silchar Airport',
+            'center': [24.9129, 92.9787],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Barak Valley airport'
+        },
+        {
+            'name': 'Tezpur Air Force Station',
+            'center': [26.7094, 92.7847],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Strategic northeastern IAF base'
+        },
+        {
+            'name': 'Chabua Air Force Station',
+            'center': [27.4500, 94.9500],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Forward IAF base'
+        },
+        
+        # Manipur, Mizoram, Tripura, Nagaland
+        {
+            'name': 'Imphal Airport',
+            'center': [24.7597, 93.8967],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'Manipur main airport'
+        },
+        {
+            'name': 'Lengpui Airport Aizawl',
+            'center': [23.8408, 92.6197],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Mizoram airport'
+        },
+        {
+            'name': 'Agartala Airport',
+            'center': [23.8870, 91.2403],
+            'radius': 4000,
+            'type': 'airport',
+            'description': 'Tripura main airport'
+        },
+        {
+            'name': 'Dimapur Airport',
+            'center': [25.8839, 93.7711],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Nagaland airport'
+        },
+        
+        # Meghalaya & Arunachal Pradesh
+        {
+            'name': 'Shillong Airport Umroi',
+            'center': [25.7036, 91.9097],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Meghalaya airport'
+        },
+        {
+            'name': 'Pasighat Airport',
+            'center': [28.0661, 95.3356],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Arunachal Pradesh airport'
+        },
+        {
+            'name': 'Along Airport',
+            'center': [28.1750, 94.8000],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Advanced landing ground'
+        },
+        {
+            'name': 'China Border Buffer Zone - Arunachal',
+            'center': [28.2180, 94.7278],
+            'radius': 25000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        
+        # Sikkim
+        {
+            'name': 'Pakyong Airport Gangtok',
+            'center': [27.2308, 88.5844],
+            'radius': 3000,
+            'type': 'airport',
+            'description': 'Sikkim airport'
+        },
+        
+        # Chhattisgarh
+        {
+            'name': 'Swami Vivekananda Airport Raipur',
+            'center': [21.1802, 81.7388],
+            'radius': 5000,
+            'type': 'airport',
+            'description': 'Chhattisgarh main airport'
+        },
+        {
+            'name': 'Jagdalpur Airport',
+            'center': [19.0717, 82.0300],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Tribal region airport'
+        },
+        
+        # Telangana (Additional)
+        {
+            'name': 'Warangal Airport',
+            'center': [17.9218, 79.5998],
+            'radius': 2000,
+            'type': 'airport',
+            'description': 'Domestic airport'
+        },
+        
+        # Nuclear & Space Facilities
+        {
+            'name': 'Narora Atomic Power Station',
+            'center': [28.2006, 78.3897],
+            'radius': 8000,
+            'type': 'nuclear',
+            'description': 'Nuclear power plant UP'
+        },
+        {
+            'name': 'Rawatbhata Nuclear Plant',
+            'center': [24.9266, 75.5950],
+            'radius': 8000,
+            'type': 'nuclear',
+            'description': 'Nuclear power plant Rajasthan'
+        },
+        {
+            'name': 'Tarapur Atomic Power Station',
+            'center': [19.8500, 72.6500],
+            'radius': 8000,
+            'type': 'nuclear',
+            'description': 'Nuclear power plant Maharashtra'
+        },
+        {
+            'name': 'Kaiga Nuclear Plant',
+            'center': [14.8643, 74.4385],
+            'radius': 8000,
+            'type': 'nuclear',
+            'description': 'Nuclear power plant Karnataka'
+        },
+        {
+            'name': 'VSSC Thumba',
+            'center': [8.5241, 76.8593],
+            'radius': 5000,
+            'type': 'space',
+            'description': 'ISRO rocket development center'
+        },
+        {
+            'name': 'ISRO Satellite Centre Bangalore',
+            'center': [13.0211, 77.5608],
+            'radius': 3000,
+            'type': 'space',
+            'description': 'Satellite manufacturing facility'
+        },
+        
+        # Additional Strategic Military Installations
+        {
+            'name': 'Ambala Air Force Station',
+            'center': [30.3815, 76.8045],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Major IAF fighter base'
+        },
+        {
+            'name': 'Adampur Air Force Station',
+            'center': [31.4338, 75.7581],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'IAF fighter base Punjab'
+        },
+        {
+            'name': 'Bareilly Air Force Station',
+            'center': [28.4222, 79.4508],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'IAF fighter base UP'
+        },
+        {
+            'name': 'Hindon Air Force Station',
+            'center': [28.7094, 77.3481],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Transport aircraft base Delhi NCR'
+        },
+        {
+            'name': 'Bhuj Air Force Station',
+            'center': [23.2878, 69.6700],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Strategic western border base'
+        },
+        {
+            'name': 'Jaisalmer Air Force Station',
+            'center': [26.8886, 70.8652],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Desert strike base'
+        },
+        {
+            'name': 'Suratgarh Air Force Station',
+            'center': [29.3225, 73.8981],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Transport base Rajasthan'
+        },
+        {
+            'name': 'Uttarlai Air Force Station',
+            'center': [25.2000, 71.8667],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Strategic Rajasthan base'
+        },
+        
+        # Naval Establishments
+        {
+            'name': 'INS Hansa - Goa Naval Aviation',
+            'center': [15.3808, 73.8314],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Naval aviation training base'
+        },
+        {
+            'name': 'INS Garuda - Kochi Naval Base',
+            'center': [9.9312, 76.2673],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Southern Naval Command'
+        },
+        {
+            'name': 'INS Rajali - Arakkonam Naval Air Station',
+            'center': [13.0824, 79.6866],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Naval aviation base Tamil Nadu'
+        },
+        {
+            'name': 'INS Dega - Visakhapatnam Naval Air Station',
+            'center': [17.7211, 83.2245],
+            'radius': 4000,
+            'type': 'military',
+            'description': 'Eastern Fleet aviation base'
+        },
+        {
+            'name': 'INS Hamla - Mumbai Naval Base',
+            'center': [18.9220, 72.8347],
+            'radius': 3000,
+            'type': 'military',
+            'description': 'Western Naval Command base'
+        },
+        {
+            'name': 'Karwar Naval Base (Project Seabird)',
+            'center': [14.8141, 74.1240],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Major naval base Karnataka'
+        },
+        {
+            'name': 'Chilka Naval Base',
+            'center': [19.7179, 85.3240],
+            'radius': 3000,
+            'type': 'military',
+            'description': 'Naval training establishment'
+        },
+        
+        # Border Security & Coast Guard
+        {
+            'name': 'Pakistan Border Buffer Zone - Punjab',
+            'center': [31.6040, 74.8723],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'Pakistan Border Buffer Zone - Rajasthan',
+            'center': [27.0238, 70.8022],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'Pakistan Border Buffer Zone - Gujarat',
+            'center': [23.7337, 68.8378],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'Bangladesh Border Buffer Zone - West Bengal',
+            'center': [22.6273, 88.7953],
+            'radius': 10000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'Myanmar Border Buffer Zone - Mizoram',
+            'center': [23.7271, 93.2551],
+            'radius': 10000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'China Border Buffer Zone - Sikkim',
+            'center': [27.6009, 88.9140],
+            'radius': 15000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        {
+            'name': 'China Border Buffer Zone - Ladakh',
+            'center': [34.2996, 78.2932],
+            'radius': 30000,
+            'type': 'military',
+            'description': 'International border restricted zone'
+        },
+        
+        # Additional Ports
+        {
+            'name': 'Ennore Port',
+            'center': [13.2167, 80.3167],
+            'radius': 3000,
+            'type': 'port',
+            'description': 'Major port Tamil Nadu'
+        },
+        {
+            'name': 'Jawaharlal Nehru Port Mumbai',
+            'center': [18.9647, 72.9492],
+            'radius': 4000,
+            'type': 'port',
+            'description': 'Container port Maharashtra'
+        },
+        {
+            'name': 'Mundra Port',
+            'center': [22.8395, 69.7937],
+            'radius': 4000,
+            'type': 'port',
+            'description': 'Private port Gujarat'
+        },
+        {
+            'name': 'Pipavav Port',
+            'center': [20.9500, 71.0833],
+            'radius': 3000,
+            'type': 'port',
+            'description': 'Container port Gujarat'
+        },
+        {
+            'name': 'Kamarajar Port Ennore',
+            'center': [13.2500, 80.3333],
+            'radius': 3000,
+            'type': 'port',
+            'description': 'Coal import port'
+        },
+        
+        # Oil Refineries & Petrochemical Complexes
+        {
+            'name': 'Mathura Refinery',
+            'center': [27.4924, 77.6737],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery UP'
+        },
+        {
+            'name': 'Panipat Refinery',
+            'center': [29.3879, 76.9690],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Haryana'
+        },
+        {
+            'name': 'Barauni Refinery',
+            'center': [25.4816, 86.0336],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Bihar'
+        },
+        {
+            'name': 'Digboi Refinery',
+            'center': [27.3833, 95.6167],
+            'radius': 2000,
+            'type': 'refinery',
+            'description': 'Asia\'s oldest refinery Assam'
+        },
+        {
+            'name': 'Guwahati Refinery',
+            'center': [26.1445, 91.7362],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Assam'
+        },
+        {
+            'name': 'Bongaigaon Refinery',
+            'center': [26.4609, 90.5501],
+            'radius': 2000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Assam'
+        },
+        {
+            'name': 'Haldia Refinery',
+            'center': [22.0582, 88.0955],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery West Bengal'
+        },
+        {
+            'name': 'Paradip Refinery',
+            'center': [20.3180, 86.6503],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Odisha'
+        },
+        {
+            'name': 'Chennai Refinery',
+            'center': [13.1143, 80.3017],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Chennai Petroleum Corporation'
+        },
+        {
+            'name': 'Mangalore Refinery',
+            'center': [12.8697, 74.8860],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'MRPL refinery Karnataka'
+        },
+        {
+            'name': 'Kochi Refinery',
+            'center': [9.9816, 76.2999],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'BPCL refinery Kerala'
+        },
+        {
+            'name': 'Mumbai Refinery',
+            'center': [19.0330, 72.8570],
+            'radius': 2000,
+            'type': 'refinery',
+            'description': 'BPCL refinery Maharashtra'
+        },
+        {
+            'name': 'Vadodara Refinery',
+            'center': [22.2587, 73.1394],
+            'radius': 3000,
+            'type': 'refinery',
+            'description': 'Indian Oil refinery Gujarat'
+        },
+        
+        # Research & Testing Facilities
+        {
+            'name': 'DRDO Chandipur',
+            'center': [21.4500, 87.0167],
+            'radius': 10000,
+            'type': 'military',
+            'description': 'Integrated test range Odisha'
+        },
+        {
+            'name': 'DRDO Hyderabad Complex',
+            'center': [17.4400, 78.4482],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Defence research laboratories'
+        },
+        {
+            'name': 'DRDO Pune Complex',
+            'center': [18.5679, 73.9143],
+            'radius': 3000,
+            'type': 'military',
+            'description': 'Armament research establishment'
+        },
+        {
+            'name': 'Terminal Ballistics Research Laboratory',
+            'center': [26.2124, 78.1772],
+            'radius': 5000,
+            'type': 'military',
+            'description': 'Weapons testing facility Chandigarh'
+        },
+        {
+            'name': 'High Energy Materials Research Laboratory',
+            'center': [18.5204, 73.8567],
+            'radius': 3000,
+            'type': 'military',
+            'description': 'Explosives research Pune'
+        },
+        
+        # Central Government Security Zones
+        {
+            'name': 'Parliament House Complex',
+            'center': [28.6172, 77.2082],
+            'radius': 2000,
+            'type': 'government',
+            'description': 'Parliament and surrounding area'
+        },
+        {
+            'name': 'Rashtrapati Bhavan Complex',
+            'center': [28.6139, 77.1999],
+            'radius': 1500,
+            'type': 'government',
+            'description': 'Presidential palace complex'
+        },
+        {
+            'name': 'Supreme Court Complex',
+            'center': [28.6229, 77.2397],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Supreme Court of India'
+        },
+        {
+            'name': 'PMO & South Block',
+            'center': [28.6127, 77.2773],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Prime Minister Office complex'
+        },
+        {
+            'name': 'Reserve Bank of India Mumbai',
+            'center': [18.9322, 72.8264],
+            'radius': 500,
+            'type': 'government',
+            'description': 'Central bank headquarters'
+        },
+        
+        # State Capital Security Zones
+        {
+            'name': 'Raj Bhavan Mumbai',
+            'center': [18.9499, 72.8048],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Maharashtra governor residence'
+        },
+        {
+            'name': 'Vidhana Soudha Bangalore',
+            'center': [12.9792, 77.5903],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Karnataka state secretariat'
+        },
+        {
+            'name': 'Fort St George Chennai',
+            'center': [13.0840, 80.2892],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'Tamil Nadu secretariat'
+        },
+        {
+            'name': 'Writers Building Kolkata',
+            'center': [22.5726, 88.3639],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'West Bengal secretariat'
+        },
+        
+        # Additional High-Security Installations
+        {
+            'name': 'CBI Headquarters',
+            'center': [28.6139, 77.2090],
+            'radius': 500,
+            'type': 'government',
+            'description': 'Central investigation agency'
+        },
+        {
+            'name': 'Intelligence Bureau Delhi',
+            'center': [28.6139, 77.2073],
+            'radius': 500,
+            'type': 'government',
+            'description': 'Internal intelligence agency'
+        },
+        {
+            'name': 'RAW Headquarters',
+            'center': [28.6304, 77.2177],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'External intelligence agency'
+        },
+        
+        # Emergency & Disaster Response Centers
+        {
+            'name': 'National Disaster Response Force HQ',
+            'center': [28.5355, 77.3910],
+            'radius': 1000,
+            'type': 'government',
+            'description': 'NDRF headquarters Ghaziabad'
+        },
+        
+        # Communication & Satellite Facilities
+        {
+            'name': 'All India Radio Delhi',
+            'center': [28.6139, 77.2090],
+            'radius': 500,
+            'type': 'government',
+            'description': 'National broadcaster headquarters'
+        },
+        {
+            'name': 'Doordarshan Kendra Delhi',
+            'center': [28.6304, 77.2177],
+            'radius': 500,
+            'type': 'government',
+            'description': 'National television broadcaster'
+        },
+        
+        # VIP Helipads & Landing Sites
+        {
+            'name': 'Palam Technical Area',
+            'center': [28.5665, 77.1031],
+            'radius': 2000,
+            'type': 'military',
+            'description': 'VIP aircraft maintenance'
+        },
+        {
+            'name': 'Safdarjung Airport',
+            'center': [28.5843, 77.2058],
+            'radius': 2000,
+            'type': 'government',
+            'description': 'Delhi flying club and emergency'
         }
     ]
