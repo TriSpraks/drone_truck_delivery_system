@@ -28,16 +28,33 @@ class Vehicle:
             return self.can_complete_route(distance_km)
         return True
 
-    def metrics(self, distance_km):
-        raise NotImplementedError("Subclasses must implement metrics method")
-
-    def total_cost(self, distance_km, max_energy_kwh, max_emission_kg):
+    def metrics(self, distance_km: float) -> dict:
+        """Return metrics for round-trip distance."""
+        round_trip_distance = distance_km * 2
+        energy = self.energy_consumption_kwh(round_trip_distance)
+        return {
+            "time_h": self.travel_time_hours(round_trip_distance),
+            "fuel_l": None,
+            "energy_kwh": energy,
+            "cost_rs": self.travel_cost_rs(round_trip_distance),
+            "co2_kg": self.emission_kg(round_trip_distance),
+            "feasible": self.can_complete_route(distance_km),
+        }
+    
+    def total_cost(self, distance_km, max_emission_kg):
+        # Get CO2 emission for this distance
         m = self.metrics(distance_km)
-        norm_energy = (m["energy_kwh"] / max_energy_kwh) if m["energy_kwh"] else 0
-        norm_emission = (m["co2_kg"] / max_emission_kg) if m["co2_kg"] else 0
+        co2_kg = m.get("co2_kg", 0)
+        norm_emission = co2_kg / max_emission_kg if max_emission_kg else 0
+
+        # Get noise level from config
+        vehicle_type_name = type(self).__name__  # 'FuelTruck', 'ElectricTruck', 'Drone'
+        noise_level = config.NOISE_LEVELS.get(vehicle_type_name, 0)
+
+        # Cost function
         return (
             config.ALPHA * distance_km
-            + config.BETA * norm_energy
+            + config.BETA * noise_level
             + config.GAMMA * norm_emission
         )
 

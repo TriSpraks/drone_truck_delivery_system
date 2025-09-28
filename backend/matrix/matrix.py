@@ -42,7 +42,6 @@ async def generate_vehicle_matrix(nodes, dist_rows, fleet_config=None):
             metrics_cache[key] = vehicle.metrics(distance)
         return metrics_cache[key]
 
-    max_energy = max([m.get("energy_kwh") or 0 for m in (get_metrics(v, max_distance) for v in vehicles)])
     max_emission = max([m.get("co2_kg") or 0 for m in (get_metrics(v, max_distance) for v in vehicles)])
 
     async def process_od_pair(od):
@@ -69,7 +68,7 @@ async def generate_vehicle_matrix(nodes, dist_rows, fleet_config=None):
 
             # Compute cost
             m = v.metrics(distance)
-            total_cost = round(v.total_cost(distance, max_energy, max_emission), 2)
+            total_cost = round(v.total_cost(distance, max_emission), 2)
 
             feasible_vehicles.append(v.id)
             feasible_distances.append(distance)

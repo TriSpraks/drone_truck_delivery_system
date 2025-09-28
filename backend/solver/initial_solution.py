@@ -145,9 +145,12 @@ def fit_clusters_to_truck_aggressive(clusters, truck, vtype, depot_id, matrix, n
         available_nodes = []
         for cluster in remaining_clusters:
             available_nodes.extend(cluster)
-        
-        # Sort nodes by efficiency (weight ascending for more nodes to fit)
-        available_nodes.sort(key=lambda n: nodes_map[n["node_id"]]["weight"])
+
+        # Sort nodes by distance to last assigned node
+        last_node_id = assigned_nodes[-1]["node_id"] if assigned_nodes else depot_id
+        available_nodes.sort(
+            key=lambda n: matrix.get((last_node_id, n["node_id"]), {}).get(vtype, (1e9,0,1e9))[0]
+        )
         
         fitted_individual_nodes = []
         for node in available_nodes:
