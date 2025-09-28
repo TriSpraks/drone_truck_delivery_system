@@ -250,115 +250,68 @@ async def build_initial_solution():
     print(f"Drone eligible nodes: {len(drone_eligible_nodes)}")
     print(f"Truck only nodes: {len(truck_only_nodes)}")
     
-    # Create smart clusters for truck nodes (including truck-eligible drone nodes)
-    all_truck_nodes = truck_only_nodes + drone_eligible_nodes  # All nodes can potentially go to trucks
-    clusters = create_smart_clusters(all_truck_nodes, depot_id, matrix)
+    # Create clusters only from truck-only nodes initially
+    truck_clusters = create_smart_clusters(truck_only_nodes, depot_id, matrix)
     
-    # Process waves with drones and trucks
+    # Track remaining drone eligible nodes separately
+    remaining_drone_nodes = drone_eligible_nodes[:]
+    remaining_truck_clusters = truck_clusters[:]
+    
+    # Process waves
     wave = 1
     max_waves = 10
     solution = {}
-    remaining_clusters = clusters[:]
+    total_drones_available = len(fleet_config["D"])
     
-    while remaining_clusters and wave <= max_waves:
+    while (remaining_drone_nodes or remaining_truck_clusters) and wave <= max_waves:
         wave_routes = {"drones": [], "trucks": [], "total_distance": 0, "total_cost": 0, "total_weight": 0, "total_volume": 0}
+        wave_has_assignments = False
         
         # Available fleet for this wave
         available_drones = fleet_config["D"][:]
         available_e_trucks = fleet_config["E"][:]
         available_f_trucks = fleet_config["F"][:]
         
-        # First priority: Assign single nodes to drones (if drone routes available)
-        drone_assigned_clusters = []
-        for i, cluster in enumerate(remaining_clusters):
-            if len(cluster) == 1 and available_drones:  # Single node clusters for drones
-                node = cluster[0]
-                # Check if drone route exists for this node
-                if "D" in matrix.get((depot_id, node["node_id"]), {}):
-                    drone_id = available_drones.pop(0)
-                    route = [depot_id, node["node_id"], depot_id]
-                    dist, cost = 0, 0
-                    for j in range(len(route)-1):
-                        d, _, c = matrix[(route[j], route[j+1])]["D"]
-                        dist += d
-                        cost += c
-                    
-                    drone_route = {
-                        "vehicle_id": drone_id,
-                        "node_ids": [node["node_id"]],
-                        "route": route,
-                        "distance": round(dist, 4),
-                        "cost": round(cost, 4),
-                        "total_weight": round(node["weight"], 2),
-                        "total_volume": round(node["volume"], 2)
-                    }
-                    
-                    wave_routes["drones"].append(drone_route)
-                    wave_routes["total_distance"] += drone_route["distance"]
-                    wave_routes["total_cost"] += drone_route["cost"]
-                    wave_routes["total_weight"] += drone_route["total_weight"]
-                    wave_routes["total_volume"] += drone_route["total_volume"]
-                    
-                    drone_assigned_clusters.append(i)
-        
-        # Remove drone-assigned clusters from remaining clusters
-        remaining_clusters = [cluster for i, cluster in enumerate(remaining_clusters) 
-                            if i not in drone_assigned_clusters]
-        
-        # Also try to assign single nodes from multi-node clusters to remaining drones
-        if available_drones and remaining_clusters:
-            updated_clusters = []
-            for cluster in remaining_clusters:
-                if len(cluster) > 1 and available_drones:
-                    # Try to extract single nodes for drones
-                    drone_nodes = []
-                    truck_nodes = []
-                    
-                    for node in cluster:
-                        if available_drones and "D" in matrix.get((depot_id, node["node_id"]), {}):
-                            # Assign to drone
-                            drone_id = available_drones.pop(0)
-                            route = [depot_id, node["node_id"], depot_id]
-                            dist, cost = 0, 0
-                            for j in range(len(route)-1):
-                                d, _, c = matrix[(route[j], route[j+1])]["D"]
-                                dist += d
-                                cost += c
-                            
-                            drone_route = {
-                                "vehicle_id": drone_id,
-                                "node_ids": [node["node_id"]],
-                                "route": route,
-                                "distance": round(dist, 4),
-                                "cost": round(cost, 4),
-                                "total_weight": round(node["weight"], 2),
-                                "total_volume": round(node["volume"], 2)
-                            }
-                            
-                            wave_routes["drones"].append(drone_route)
-                            wave_routes["total_distance"] += drone_route["distance"]
-                            wave_routes["total_cost"] += drone_route["cost"]
-                            wave_routes["total_weight"] += drone_route["total_weight"]
-                            wave_routes["total_volume"] += drone_route["total_volume"]
-                        else:
-                            truck_nodes.append(node)
-                    
-                    # If there are remaining nodes for trucks, keep the cluster
-                    if truck_nodes:
-                        updated_clusters.append(truck_nodes)
-                else:
-                    updated_clusters.append(cluster)
+        # Priority 1: Assign drone-eligible nodes to drones (drone-only policy)
+        if remaining_drone_nodes and available_drones:
+            nodes_to_assign = min(len(remaining_drone_nodes), len(available_drones))
             
-            remaining_clusters = updated_clusters
+            for i in range(nodes_to_assign):
+                node = remaining_drone_nodes.pop(0)
+                drone_id = available_drones.pop(0)
+                
+                route = [depot_id, node["node_id"], depot_id]
+                dist, cost = 0, 0
+                for j in range(len(route)-1):
+                    d, _, c = matrix[(route[j], route[j+1])]["D"]
+                    dist += d
+                    cost += c
+                
+                drone_route = {
+                    "vehicle_id": drone_id,
+                    "node_ids": [node["node_id"]],
+                    "route": route,
+                    "distance": round(dist, 4),
+                    "cost": round(cost, 4),
+                    "total_weight": round(node["weight"], 2),
+                    "total_volume": round(node["volume"], 2)
+                }
+                
+                wave_routes["drones"].append(drone_route)
+                wave_routes["total_distance"] += drone_route["distance"]
+                wave_routes["total_cost"] += drone_route["cost"]
+                wave_routes["total_weight"] += drone_route["total_weight"]
+                wave_routes["total_volume"] += drone_route["total_volume"]
+                wave_has_assignments = True
         
-        # Prioritize electric trucks
+        # Priority 2: Assign truck clusters to electric trucks
         for truck_id in available_e_trucks:
-            if not remaining_clusters:
+            if not remaining_truck_clusters:
                 break
                 
             truck = vehicles_map[truck_id]
             assigned_nodes, total_weight, total_volume, leftover_clusters = fit_clusters_to_truck_aggressive(
-                remaining_clusters, truck, "E", depot_id, matrix, nodes_map
+                remaining_truck_clusters, truck, "E", depot_id, matrix, nodes_map
             )
             
             if assigned_nodes:
@@ -390,16 +343,17 @@ async def build_initial_solution():
                 wave_routes["total_weight"] = round(wave_routes["total_weight"] + total_weight, 2)
                 wave_routes["total_volume"] = round(wave_routes["total_volume"] + total_volume, 2)
                 
-                remaining_clusters = leftover_clusters
+                remaining_truck_clusters = leftover_clusters
+                wave_has_assignments = True
         
-        # Use fuel trucks for remaining clusters
+        # Priority 3: Use fuel trucks for remaining truck clusters
         for truck_id in available_f_trucks:
-            if not remaining_clusters:
+            if not remaining_truck_clusters:
                 break
                 
             truck = vehicles_map[truck_id]
             assigned_nodes, total_weight, total_volume, leftover_clusters = fit_clusters_to_truck_aggressive(
-                remaining_clusters, truck, "F", depot_id, matrix, nodes_map
+                remaining_truck_clusters, truck, "F", depot_id, matrix, nodes_map
             )
             
             if assigned_nodes:
@@ -431,23 +385,155 @@ async def build_initial_solution():
                 wave_routes["total_weight"] = round(wave_routes["total_weight"] + total_weight, 2)
                 wave_routes["total_volume"] = round(wave_routes["total_volume"] + total_volume, 2)
                 
-                remaining_clusters = leftover_clusters
+                remaining_truck_clusters = leftover_clusters
+                wave_has_assignments = True
 
-        solution[f"wave_{wave}"] = wave_routes
+        # Only add wave to solution if it has assignments
+        if wave_has_assignments:
+            solution[f"wave_{wave}"] = wave_routes
         
-        if not remaining_clusters:
+        # Check if this could be the final wave (no more truck clusters and we can assign all remaining drone nodes)
+        if not remaining_truck_clusters and remaining_drone_nodes:
+            print(f"All truck clusters assigned. Attempting to assign remaining {len(remaining_drone_nodes)} drone-eligible nodes to trucks in current wave.")
+            
+            # Convert remaining drone nodes to single-node clusters
+            drone_node_clusters = [[node] for node in remaining_drone_nodes]
+            
+            # Try to assign to available trucks in current wave
+            available_trucks = available_e_trucks + available_f_trucks
+            for truck_id in available_trucks:
+                if not drone_node_clusters:
+                    break
+                
+                truck = vehicles_map[truck_id]
+                vtype = "E" if truck_id in available_e_trucks else "F"
+                
+                assigned_nodes, total_weight, total_volume, leftover_clusters = fit_clusters_to_truck_aggressive(
+                    drone_node_clusters, truck, vtype, depot_id, matrix, nodes_map
+                )
+                
+                if assigned_nodes:
+                    route_nodes = [depot_id] + [n["node_id"] for n in assigned_nodes] + [depot_id]
+                    dist, cost = 0, 0
+                    
+                    for j in range(len(route_nodes)-1):
+                        d, _, c = matrix[(route_nodes[j], route_nodes[j+1])][vtype]
+                        dist += d
+                        cost += c
+                    
+                    truck_route = {
+                        "vehicle_id": truck_id,
+                        "node_ids": [n["node_id"] for n in assigned_nodes],
+                        "route": route_nodes,
+                        "distance": round(dist, 4),
+                        "cost": round(cost, 4),
+                        "total_weight": round(total_weight, 2),
+                        "total_volume": round(total_volume, 2),
+                        "capacity_utilization": {
+                            "weight_percent": round((total_weight / truck["capacity_kg"]) * 100, 2),
+                            "volume_percent": round((total_volume / truck["capacity_cm3"]) * 100, 2)
+                        }
+                    }
+                    
+                    # Add to current wave
+                    wave_key = f"wave_{wave}"
+                    if wave_key not in solution:
+                        solution[wave_key] = {"drones": [], "trucks": [], "total_distance": 0, "total_cost": 0, "total_weight": 0, "total_volume": 0}
+                        wave_has_assignments = True
+                    
+                    solution[wave_key]["trucks"].append(truck_route)
+                    solution[wave_key]["total_distance"] = round(solution[wave_key]["total_distance"] + dist, 4)
+                    solution[wave_key]["total_cost"] = round(solution[wave_key]["total_cost"] + cost, 4)
+                    solution[wave_key]["total_weight"] = round(solution[wave_key]["total_weight"] + total_weight, 2)
+                    solution[wave_key]["total_volume"] = round(solution[wave_key]["total_volume"] + total_volume, 2)
+                    
+                    drone_node_clusters = leftover_clusters
+                    wave_has_assignments = True
+            
+            remaining_drone_nodes = []
+            for cluster in drone_node_clusters:
+                remaining_drone_nodes.extend(cluster)
+        
+        # Break if no more nodes to assign
+        if not remaining_drone_nodes and not remaining_truck_clusters:
             break
             
+        # Break if reached max waves
         if wave == max_waves:
-            print(f"Safety break reached. Remaining clusters: {len(remaining_clusters)}")
-            # Add unassigned nodes info
-            unassigned_nodes = []
-            for cluster in remaining_clusters:
-                unassigned_nodes.extend([n["node_id"] for n in cluster])
-            solution["unassigned_nodes"] = unassigned_nodes
+            print(f"Safety break reached. Remaining drone nodes: {len(remaining_drone_nodes)}, Remaining truck clusters: {len(remaining_truck_clusters)}")
             break
             
         wave += 1
 
-    return solution
+    # Add unassigned nodes info if any remain
+    unassigned_nodes = []
+    if remaining_drone_nodes:
+        unassigned_nodes.extend([n["node_id"] for n in remaining_drone_nodes])
+    if remaining_truck_clusters:
+        for cluster in remaining_truck_clusters:
+            unassigned_nodes.extend([n["node_id"] for n in cluster])
+    
+    if unassigned_nodes:
+        solution["unassigned_nodes"] = unassigned_nodes
 
+    # Add comprehensive summary
+    summary = {
+        "total_waves": len([k for k in solution.keys() if k.startswith("wave_")]),
+        "total_nodes_assigned": 0,
+        "total_drone_assignments": 0,
+        "total_truck_assignments": 0,
+        "total_distance": 0,
+        "total_cost": 0,
+        "total_weight": 0,
+        "total_volume": 0,
+        "wave_breakdown": {}
+    }
+    
+    for wave_key, wave_data in solution.items():
+        if wave_key.startswith("wave_"):
+            wave_num = wave_key
+            drone_count = len(wave_data["drones"])
+            truck_count = len(wave_data["trucks"])
+            nodes_in_wave = 0
+            
+            for drone_route in wave_data["drones"]:
+                nodes_in_wave += len(drone_route["node_ids"])
+            
+            for truck_route in wave_data["trucks"]:
+                nodes_in_wave += len(truck_route["node_ids"])
+            
+            summary["wave_breakdown"][wave_num] = {
+                "nodes_assigned": nodes_in_wave,
+                "drone_routes": drone_count,
+                "truck_routes": truck_count,
+                "total_distance": wave_data["total_distance"],
+                "total_cost": wave_data["total_cost"],
+                "total_weight": wave_data["total_weight"],
+                "total_volume": wave_data["total_volume"]
+            }
+            
+            summary["total_nodes_assigned"] += nodes_in_wave
+            summary["total_drone_assignments"] += drone_count
+            summary["total_truck_assignments"] += truck_count
+            summary["total_distance"] += wave_data["total_distance"]
+            summary["total_cost"] += wave_data["total_cost"]
+            summary["total_weight"] += wave_data["total_weight"]
+            summary["total_volume"] += wave_data["total_volume"]
+    
+    # Add efficiency metrics
+    summary["efficiency_metrics"] = {
+        "average_cost_per_node": round(summary["total_cost"] / max(1, summary["total_nodes_assigned"]), 4),
+        "average_distance_per_node": round(summary["total_distance"] / max(1, summary["total_nodes_assigned"]), 4)
+    }
+    
+    if unassigned_nodes:
+        summary["unassigned_nodes_count"] = len(unassigned_nodes)
+        summary["assignment_success_rate"] = round((summary["total_nodes_assigned"] / 
+                                                  (summary["total_nodes_assigned"] + len(unassigned_nodes))) * 100, 2)
+    else:
+        summary["unassigned_nodes_count"] = 0
+        summary["assignment_success_rate"] = 100.0
+    
+    solution["summary"] = summary
+    
+    return solution
