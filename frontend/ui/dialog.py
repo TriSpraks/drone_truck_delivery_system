@@ -60,7 +60,7 @@ class DepotSelectionWindow(QDialog):
         left_layout = QVBoxLayout(left_panel)
         
         # Configuration title
-        config_title = QLabel("Delivery Fleet Configuration")
+        config_title = QLabel("Drone Truck Delivery System")
         config_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #ff6b35; margin-bottom: 20px; padding: 10px;")
         
         # Customer count group
@@ -218,21 +218,24 @@ class DepotSelectionWindow(QDialog):
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         
-        # Header
+       # Header
         header_frame = QFrame()
         header_frame.setStyleSheet("QFrame { background-color: #2d2d2d; padding: 15px; }")
         header_layout = QVBoxLayout(header_frame)
-        
-        # Title
-        title_label = QLabel("Select Your Depot Location")
+
+        # Main Title
+        title_label = QLabel("Drone Truck Delivery System")
         title_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #ff6b35;")
-        
-        # Subtitle
-        subtitle_label = QLabel("Choose the starting point for your delivery operations")
-        subtitle_label.setStyleSheet("font-size: 16px; color: #cccccc; margin-top: 5px;")
-        
+
+        # Subtitle (just below the main title in the same box)
+        subtitle_label = QLabel("Select Your Depot Location")
+        subtitle_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; margin-top: 5px;")
+
+        # Add to layout
         header_layout.addWidget(title_label)
-       
+        header_layout.addWidget(subtitle_label)
+
+
         # Map container
         map_container = QFrame()
         map_container.setStyleSheet("QFrame { border: 2px solid #404040; border-radius: 8px; }")
@@ -251,7 +254,7 @@ class DepotSelectionWindow(QDialog):
         
         # Instructions
         instructions_label = QLabel(
-            f"🚩Click anywhere on the map to select your depot location. "
+            f"Click anywhere on the map to select your depot location. "
             f"This will generate {self.customer_count} delivery points around your depot."
         )
         instructions_label.setStyleSheet("font-size: 14px; color: #cccccc;")
@@ -302,10 +305,6 @@ Total Vehicles: {total_vehicles}<br/>
 •  Electric Trucks: {self.electric_trucks}<br/>
 •  Fuel Trucks: {self.fuel_trucks}<br/>
 •  Drones: {self.drones}<br/>
-<br/>
-<b>Capacity Estimate:</b><br/>
-Daily Deliveries: ~{total_vehicles * 8} packages<br/>
-Coverage Area: ~{total_vehicles * 5}km radius
         """
         self.fleet_summary.setText(summary_text)
     
@@ -331,7 +330,7 @@ Coverage Area: ~{total_vehicles * 5}km radius
     def update_instructions(self):
         """Update instruction text"""
         self.instructions_label.setText(
-            f"🚩Click anywhere on the map to select your depot location. "
+            f"Click anywhere on the map to select your depot location. "
             f"This will generate {self.customer_count} delivery points around your depot."
         )
     
