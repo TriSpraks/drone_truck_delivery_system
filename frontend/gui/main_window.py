@@ -362,7 +362,7 @@ class IndiaAirspaceMap(QMainWindow):
         drone_max_volume = 20000    # cm³
 
         # Split nodes 20% inner / 80% outer
-        inner_count = max(1, int(self.customer_count * 0.2))
+        inner_count = max(1, int(self.customer_count * 0.1))
         outer_count = self.customer_count - inner_count
 
         # ---------------- Inner circle (0.5–5 km) → must be drone-eligible ----------------
@@ -394,14 +394,14 @@ class IndiaAirspaceMap(QMainWindow):
             lat_offset = (distance_km / 111.32) * math.cos(math.radians(angle))
             lon_offset = (distance_km / (111.32 * math.cos(math.radians(depot_lat)))) * math.sin(math.radians(angle))
 
-            # Randomly decide if drone-eligible (30% chance)
-            if random.random() < 0.3:
+            if random.random() < 0.15:  # 15% chance → drone-eligible even if far
                 weight = round(random.uniform(0.5, drone_max_weight), 2)
                 volume = random.randint(500, drone_max_volume)
+                eligible = "drone"
             else:
-                weight = round(random.uniform(6.0, 15.0), 2)
-                volume = random.randint(20000, 60000)
-
+                weight = round(random.uniform(100, 1000), 2)  # strictly truck
+                volume = random.randint(200000, 5400000)
+                eligible = "truck"
             points.append({
                 "node_id": f"cust_{len(points) + 1}",
                 "type": "customer",
@@ -409,7 +409,8 @@ class IndiaAirspaceMap(QMainWindow):
                 "volume": volume,
                 "lon": round(depot_lon + lon_offset, 6),
                 "lat": round(depot_lat + lat_offset, 6),
-                "coords": [round(depot_lat + lat_offset, 6), round(depot_lon + lon_offset, 6)]
+                "coords": [round(depot_lat + lat_offset, 6), round(depot_lon + lon_offset, 6)],
+                "eligible": "truck"  # ✅ explicitly mark
             })
 
         # Shuffle nodes so depot isn't first
