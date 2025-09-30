@@ -42,7 +42,10 @@ class DeliveryInfoWidget(QWidget):
             info_layout = QVBoxLayout(info_group)
             
             self.delivery_list = QListWidget()
+            self.delivery_list.setWordWrap(True)
+            self.delivery_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             info_layout.addWidget(self.delivery_list)
+            
             
             # Summary
             summary_group = QGroupBox("Summary")

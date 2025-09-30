@@ -54,16 +54,22 @@ class DepotSelectionWindow(QDialog):
     # Enhanced signal to include all configuration parameters
     depot_selected = pyqtSignal(float, float, int, int, int, int)  # lat, lng, customers, electric_trucks, fuel_trucks, drones
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, as_widget=False):
         super().__init__(parent)
+        
+        # If used as widget, don't show as dialog
+        if as_widget:
+            self.setWindowFlags(Qt.Widget)
+        else:
+            self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | 
+                               Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+        
         self.setWindowTitle("Select Depot Location & Fleet Configuration - India Airspace Management")
         self.setGeometry(100, 100, 1800, 1000)
         self.setMinimumSize(1600, 800)
         
-        # Remove question mark and add minimize/maximize buttons
-        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | 
-                           Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
-        
+        # Store mode
+        self.as_widget = as_widget
         # Apply dark theme
         self.setStyleSheet(DARK_STYLE)
         
@@ -641,7 +647,9 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
             print(f"  Depot: {lat:.6f}, {lng:.6f}")
             print(f"  Customers: {self.customer_count}")
             print(f"  Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D")
-            self.accept()
+            
+            if not self.as_widget:
+                self.accept()
     
     def accept(self):
         """Override accept to clean up"""
