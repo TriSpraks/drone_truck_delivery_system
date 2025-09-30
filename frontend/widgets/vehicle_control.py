@@ -21,19 +21,23 @@ class VehicleControlPanel(QWidget):
         status_group = QGroupBox("Vehicle Status")
         status_group.setStyleSheet("""
             QGroupBox {
+                font-size: 16px;
                 font-weight: bold;
                 border: 2px solid #404040;
                 border-radius: 8px;
                 margin-top: 1ex;
                 padding-top: 10px;
                 color: #ffffff;
+                background-color: #333333;
+                padding: 15px;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px 0 5px;
                 color: #ff6b35;
-                font-size: 14px;
+                font-size: 16px;
+                font-weight: bold;
             }
         """)
         
@@ -78,7 +82,7 @@ class VehicleControlPanel(QWidget):
                 border-radius: 4px;
                 color: #ffffff;
                 font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 11px;
+                font-size: 13px;
                 padding: 5px;
             }
             QListWidget::item {

@@ -1,44 +1,83 @@
 """
-Depot selection dialog - ENHANCED VERSION with vehicle configuration
+Depot selection dialog - ENHANCED VERSION with standardized fonts
 """
 import os
 import json
 import time
 from PyQt5.QtWidgets import (QDialog, QWidget, QVBoxLayout, QHBoxLayout, 
                            QLabel, QFrame, QPushButton, QSpinBox, QFormLayout,
-                           QMessageBox, QGroupBox)
+                           QMessageBox, QGroupBox, QLineEdit)
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import QTimer, QUrl, Qt, pyqtSignal
+from PyQt5.QtGui import QIntValidator
 from config.app_config import DARK_STYLE
 from utils.nfz_data import get_depot_selection_no_fly_zones
 from resources.map_templates import DEPOT_SELECTION_HTML
 
-class DepotSelectionWindow(QDialog):
-    # Enhanced signal to include all configuration parameters
-    depot_selected = pyqtSignal(float, float, int, int, int, int)  # lat, lng, customers, electric_trucks, fuel_trucks, drones
+
+
+class PlaceholderSpinBox(QSpinBox):
+    """Custom SpinBox with placeholder text that vanishes on click"""
     
-    def __init__(self, parent=None):
+    def __init__(self, placeholder_text="", parent=None):
         super().__init__(parent)
+        self.placeholder_text = placeholder_text
+        self.setRange(0, 999)
+        self.setValue(0)
+        self.setSpecialValueText(placeholder_text)
+        
+    def focusInEvent(self, event):
+        """Clear field when user clicks (focus in)"""
+        if self.value() == self.minimum():
+            line_edit = self.lineEdit()
+            line_edit.clear()
+            line_edit.setSelection(0, 0)
+        super().focusInEvent(event)
+    
+    def focusOutEvent(self, event):
+        """Restore placeholder if field is empty when focus is lost"""
+        line_edit = self.lineEdit()
+        text = line_edit.text().strip()
+        
+        if not text or not text.isdigit():
+            self.setValue(self.minimum())
+        else:
+            value = int(text)
+            if value < 1:
+                self.setValue(self.minimum())
+        
+        super().focusOutEvent(event)
+
+
+class DepotSelectionWindow(QDialog):
+    depot_selected = pyqtSignal(float, float, int, int, int, int)
+    
+    def __init__(self, parent=None, as_widget=False):
+        super().__init__(parent)
+        
+        if as_widget:
+            self.setWindowFlags(Qt.Widget)
+        else:
+            self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | 
+                               Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint)
+        
         self.setWindowTitle("Select Depot Location & Fleet Configuration - India Airspace Management")
-        self.setGeometry(100, 100, 1800, 1000)  # Slightly wider to accommodate new inputs
+        self.setGeometry(100, 100, 1800, 1000)
         self.setMinimumSize(1600, 800)
         
-        # Apply dark theme
+        self.as_widget = as_widget
         self.setStyleSheet(DARK_STYLE)
         
-        # Selected depot coordinates and configuration
         self.selected_depot = None
-        self.customer_count = 5  # Default customer count
-        self.electric_trucks = 2  # Default electric trucks
-        self.fuel_trucks = 1  # Default fuel trucks
-        self.drones = 3  # Default drones
+        self.customer_count = 0
+        self.electric_trucks = 0
+        self.fuel_trucks = 0
+        self.drones = 0
         self.map_ready = False
         
-        # India center coordinates
         self.map_center = [20.5937, 78.9629]
         self.map_zoom = 5
         
-        # No-fly zones data (subset for depot selection)
         self.no_fly_zones = get_depot_selection_no_fly_zones()
         
         self.setup_ui()
@@ -47,26 +86,25 @@ class DepotSelectionWindow(QDialog):
         
     def setup_ui(self):
         """Setup the user interface"""
-        # Main layout - horizontal split for configuration panel
         main_layout = QHBoxLayout(self)
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Left panel - Configuration panel (expanded)
+        # Left panel
         left_panel = QFrame()
-        left_panel.setMaximumWidth(450)  # Increased width
+        left_panel.setMaximumWidth(450)
         left_panel.setMinimumWidth(400)
         left_panel.setStyleSheet("QFrame { background-color: #2d2d2d; padding: 15px; }")
         left_layout = QVBoxLayout(left_panel)
         
-        # Configuration title
+        # Configuration title - STANDARDIZED
         config_title = QLabel("Drone Truck Delivery System")
-        config_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #ff6b35; margin-bottom: 20px; padding: 10px;")
+        config_title.setStyleSheet(f"font-size: 22px; font-weight: bold; color: #ff6b35; margin-bottom: 20px; padding: 10px;")
         
-        # Customer count group
+        # Customer count group - STANDARDIZED
         customer_group = QGroupBox("Delivery Configuration")
-        customer_group.setStyleSheet("""
-            QGroupBox {
+        customer_group.setStyleSheet(f"""
+            QGroupBox {{
                 font-size: 16px;
                 font-weight: bold;
                 color: #ffffff;
@@ -74,32 +112,29 @@ class DepotSelectionWindow(QDialog):
                 padding: 15px;
                 border-radius: 8px;
                 margin-top: 10px;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px 0 5px;
-            }
+            }}
         """)
         customer_layout = QFormLayout(customer_group)
         
-        # Customer count
+        # Customer label - STANDARDIZED (removed bold)
         customer_label = QLabel("Number of Customers:")
-        customer_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff;")
-        
-        self.customer_spinbox = QSpinBox()
-        self.customer_spinbox.setRange(1, 999)
-        self.customer_spinbox.setValue(5)
-        # self.customer_spinbox.setSuffix(" customers")
-        self.customer_spinbox.setStyleSheet("font-size: 14px; padding: 8px;")
+        customer_label.setStyleSheet(f"font-size: 13px; color: #ffffff;")
+
+        self.customer_spinbox = PlaceholderSpinBox("Customers")
+        self.customer_spinbox.setStyleSheet(f"font-size: 13px; padding: 8px;")
         self.customer_spinbox.valueChanged.connect(self.on_customer_count_changed)
-        
+
         customer_layout.addRow(customer_label, self.customer_spinbox)
         
-        # Fleet configuration group
+        # Fleet configuration group - STANDARDIZED
         fleet_group = QGroupBox("Fleet Configuration")
-        fleet_group.setStyleSheet("""
-            QGroupBox {
+        fleet_group.setStyleSheet(f"""
+            QGroupBox {{
                 font-size: 16px;
                 font-weight: bold;
                 color: #ffffff;
@@ -107,56 +142,46 @@ class DepotSelectionWindow(QDialog):
                 padding: 15px;
                 border-radius: 8px;
                 margin-top: 10px;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px 0 5px;
-            }
+            }}
         """)
         fleet_layout = QFormLayout(fleet_group)
         
-        # Electric trucks
+        # Fleet labels - STANDARDIZED (removed bold)
         electric_label = QLabel("Electric Trucks:")
-        electric_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #4CAF50;")  # Green for electric
+        electric_label.setStyleSheet(f"font-size: 13px; color: #4CAF50;")
         
-        self.electric_spinbox = QSpinBox()
-        self.electric_spinbox.setRange(0, 999)
-        self.electric_spinbox.setValue(2)
-        # self.electric_spinbox.setSuffix(" trucks")
-        self.electric_spinbox.setStyleSheet("font-size: 14px; padding: 8px; color: #4CAF50;")
+        self.electric_spinbox = PlaceholderSpinBox("Electric Trucks")
+        self.electric_spinbox.setStyleSheet(f"font-size: 13px; padding: 8px; color: #4CAF50;")
         self.electric_spinbox.valueChanged.connect(self.on_fleet_changed)
         
-        # Fuel trucks
         fuel_label = QLabel("Fuel Trucks:")
-        fuel_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #FF9800;")  # Orange for fuel
-        
-        self.fuel_spinbox = QSpinBox()
-        self.fuel_spinbox.setRange(0, 999)
-        self.fuel_spinbox.setValue(1)
-        # self.fuel_spinbox.setSuffix(" trucks")
-        self.fuel_spinbox.setStyleSheet("font-size: 14px; padding: 8px; color: #FF9800;")
+        fuel_label.setStyleSheet(f"font-size: 13px; color: #FF9800;")
+
+        self.fuel_spinbox = PlaceholderSpinBox("Fuel Trucks")
+        self.fuel_spinbox.setStyleSheet(f"font-size: 13px; padding: 8px; color: #FF9800;")
         self.fuel_spinbox.valueChanged.connect(self.on_fleet_changed)
         
-        # Drones
         drone_label = QLabel("Drones:")
-        drone_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #2196F3;")  # Blue for drones
-        
-        self.drone_spinbox = QSpinBox()
-        self.drone_spinbox.setRange(0, 999)
-        self.drone_spinbox.setValue(3)
-        # self.drone_spinbox.setSuffix(" drones")
-        self.drone_spinbox.setStyleSheet("font-size: 14px; padding: 8px; color: #2196F3;")
+        drone_label.setStyleSheet(f"font-size: 13px; color: #2196F3;")
+
+        self.drone_spinbox = PlaceholderSpinBox("Drones")
+        self.drone_spinbox.setStyleSheet(f"font-size: 13px; padding: 8px; color: #2196F3;")
         self.drone_spinbox.valueChanged.connect(self.on_fleet_changed)
         
         fleet_layout.addRow(electric_label, self.electric_spinbox)
         fleet_layout.addRow(fuel_label, self.fuel_spinbox)
         fleet_layout.addRow(drone_label, self.drone_spinbox)
         
-        # Fleet summary
+        # Fleet summary - STANDARDIZED
         self.fleet_summary = QLabel()
-        self.fleet_summary.setStyleSheet("""
-            font-size: 12px; 
+        self.fleet_summary.setTextFormat(Qt.RichText)
+        self.fleet_summary.setStyleSheet(f"""
+            font-size: 13px; 
             color: #cccccc; 
             padding: 10px; 
             background-color: #404040; 
@@ -166,25 +191,24 @@ class DepotSelectionWindow(QDialog):
         self.fleet_summary.setWordWrap(True)
         self.update_fleet_summary()
         
-        # Depot instructions
+        
+        # Depot instructions - STANDARDIZED (removed inline font sizes)
         depot_instructions = QLabel("""
-<b style="font-size: 15px;">Setup Instructions:</b><br/>
-
+<b>Setup Instructions:</b><br/>
 1. Configure customer count and fleet size above<br/>
 2. Click on the map to choose depot location<br/>
 3. Avoid red No-Fly Zones<br/>
 4. Consider proximity to major cities<br/>
 5. Click "Confirm" to proceed<br/>
-
-
-<b style="font-size: 14px;">Fleet Guidelines:</b><br/>
+<br/>
+<b>Fleet Guidelines:</b><br/>
 • Electric trucks: Eco-friendly, limited range<br/>
 • Fuel trucks: Longer range, higher capacity<br/>
 • Drones: Fast delivery, weather dependent<br/>
 • Balance fleet based on delivery requirements<br/>
         """)
-        depot_instructions.setStyleSheet("""
-            font-size: 12px; 
+        depot_instructions.setStyleSheet(f"""
+            font-size: 13px; 
             color: #ffffff; 
             padding: 15px; 
             background-color: #404040; 
@@ -193,10 +217,10 @@ class DepotSelectionWindow(QDialog):
         """)
         depot_instructions.setWordWrap(True)
         
-        # Current selection display
+        # Current selection display - STANDARDIZED
         self.selection_display = QLabel("No depot selected")
-        self.selection_display.setStyleSheet("""
-            font-size: 14px; 
+        self.selection_display.setStyleSheet(f"""
+            font-size: 13px; 
             color: #ff6b35; 
             font-weight: bold; 
             padding: 15px; 
@@ -214,33 +238,34 @@ class DepotSelectionWindow(QDialog):
         left_layout.addWidget(self.selection_display)
         left_layout.addStretch()
         
-        # Right panel - Map and controls
+        # Right panel
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         
        # Header
         header_frame = QFrame()
-        header_frame.setStyleSheet("QFrame { background-color: #2d2d2d; padding: 15px; }")
+        header_frame.setStyleSheet("QFrame { background-color: #2d2d2d; padding: 10px; }")
         header_layout = QVBoxLayout(header_frame)
+        header_layout.setSpacing(0)
+        header_layout.setContentsMargins(0, 0, 0, 5)
 
-        # Main Title
+        # Main Title - STANDARDIZED (same as left panel)
         title_label = QLabel("Drone Truck Delivery System")
-        title_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #ff6b35;")
+        title_label.setStyleSheet(f"font-size: 22px; font-weight: bold; color: #ff6b35; margin-bottom: 0px;")
 
-        # Subtitle (just below the main title in the same box)
+        # Subtitle - STANDARDIZED
         subtitle_label = QLabel("Select Your Depot Location")
-        subtitle_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffffff; margin-top: 5px;")
+        subtitle_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: #ffffff; margin-top: 0px; margin-bottom: 5px;")
 
-        # Add to layout
         header_layout.addWidget(title_label)
         header_layout.addWidget(subtitle_label)
-
 
         # Map container
         map_container = QFrame()
         map_container.setStyleSheet("QFrame { border: 2px solid #404040; border-radius: 8px; }")
+        map_container.setMinimumHeight(750)
         map_layout = QVBoxLayout(map_container)
-        map_layout.setContentsMargins(5, 5, 5, 5)
+        map_layout.setContentsMargins(3, 3, 3, 3)
         
         # Map view
         self.map_view = QWebEngineView()
@@ -252,31 +277,33 @@ class DepotSelectionWindow(QDialog):
         controls_frame.setStyleSheet("QFrame { background-color: #2d2d2d; padding: 15px; }")
         controls_layout = QHBoxLayout(controls_frame)
         
-        # Instructions
+        # Instructions - STANDARDIZED
         instructions_label = QLabel(
-            f"Click anywhere on the map to select your depot location. "
-            f"This will generate {self.customer_count} delivery points around your depot."
+            "Click anywhere on the map to select your depot location. "
+            "This will generate delivery points around your depot."
         )
-        instructions_label.setStyleSheet("font-size: 14px; color: #cccccc;")
+        instructions_label.setStyleSheet(f"font-size: 13px; color: #cccccc;")
         instructions_label.setWordWrap(True)
         self.instructions_label = instructions_label
         
-        # Status display
+        # Status display - STANDARDIZED
         self.status_label = QLabel("No location selected")
-        self.status_label.setStyleSheet("font-size: 14px; color: #ff6b35; font-weight: bold;")
+        self.status_label.setStyleSheet(f"font-size: 13px; color: #ff6b35; font-weight: bold;")
         
-        # Buttons
-        self.confirm_btn = QPushButton("Confirm Configuration & Continue")
+        # Buttons - STANDARDIZED
+        self.confirm_btn = QPushButton("Confirm Configuration and Continue")
         self.confirm_btn.clicked.connect(self.confirm_depot_selection)
         self.confirm_btn.setEnabled(False)
-        self.confirm_btn.setStyleSheet("QPushButton { padding: 15px 30px; font-size: 16px; }")
+        self.confirm_btn.setStyleSheet(f"QPushButton {{ padding: 12px 30px; font-size: 14px; }}")
         
         self.reset_btn = QPushButton("Reset Selection")
         self.reset_btn.clicked.connect(self.reset_selection)
         self.reset_btn.setEnabled(False)
+        self.reset_btn.setStyleSheet(f"QPushButton {{ padding: 10px 20px; font-size: 14px; }}")
         
         self.cancel_btn = QPushButton("Exit")
         self.cancel_btn.clicked.connect(self.reject)
+        self.cancel_btn.setStyleSheet(f"QPushButton {{ padding: 10px 20px; font-size: 14px; }}")
         
         # Layout controls
         controls_layout.addWidget(instructions_label)
@@ -297,53 +324,70 @@ class DepotSelectionWindow(QDialog):
     
     def update_fleet_summary(self):
         """Update the fleet summary display"""
-        total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+        customers = self.customer_count if self.customer_count > 0 else 0
+        electric = self.electric_trucks if self.electric_trucks > 0 else 0
+        fuel = self.fuel_trucks if self.fuel_trucks > 0 else 0
+        drones = self.drones if self.drones > 0 else 0
+        total_vehicles = electric + fuel + drones
         
-        summary_text = f"""
+        summary_text = f"""<html><body>
 <b>Fleet Summary:</b><br/>
+Customers: {customers}<br/>
 Total Vehicles: {total_vehicles}<br/>
-•  Electric Trucks: {self.electric_trucks}<br/>
-•  Fuel Trucks: {self.fuel_trucks}<br/>
-•  Drones: {self.drones}<br/>
-        """
+•  Electric Trucks: {electric}<br/>
+•  Fuel Trucks: {fuel}<br/>
+•  Drones: {drones}<br/>
+</body></html>"""
+        
         self.fleet_summary.setText(summary_text)
     
     def on_customer_count_changed(self, value):
         """Handle customer count change"""
-        self.customer_count = value
+        if value > 0:
+            self.customer_count = value
+        else:
+            self.customer_count = 0
+            
         self.update_instructions()
         self.update_selection_display()
+        self.update_fleet_summary()
         
-        if self.map_ready:
+        if self.map_ready and value > 0:
             js_code = f"window.updateCustomerCount({value});"
             self.map_view.page().runJavaScript(js_code)
     
     def on_fleet_changed(self):
         """Handle fleet configuration changes"""
-        self.electric_trucks = self.electric_spinbox.value()
-        self.fuel_trucks = self.fuel_spinbox.value()
-        self.drones = self.drone_spinbox.value()
+        self.electric_trucks = self.electric_spinbox.value() if self.electric_spinbox.value() > 0 else 0
+        self.fuel_trucks = self.fuel_spinbox.value() if self.fuel_spinbox.value() > 0 else 0
+        self.drones = self.drone_spinbox.value() if self.drone_spinbox.value() > 0 else 0
         
         self.update_fleet_summary()
         self.update_selection_display()
     
     def update_instructions(self):
         """Update instruction text"""
-        self.instructions_label.setText(
-            f"Click anywhere on the map to select your depot location. "
-            f"This will generate {self.customer_count} delivery points around your depot."
-        )
+        if self.customer_count > 0:
+            self.instructions_label.setText(
+                f"Click anywhere on the map to select your depot location. "
+                f"This will generate {self.customer_count} delivery points around your depot."
+            )
+        else:
+            self.instructions_label.setText(
+                "Click anywhere on the map to select your depot location. "
+                "Configure customer count first to generate delivery points."
+            )
     
     def update_selection_display(self):
         """Update selection display with current configuration"""
         if self.selected_depot:
             lat, lng = self.selected_depot
             display_text = f"""Depot: {lat:.4f}, {lng:.4f}
-Customers: {self.customer_count}
+Customers: {self.customer_count if self.customer_count > 0 else 'Not set'}
 Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
         else:
             display_text = f"""No depot selected
-Customers: {self.customer_count}
+Customers: {self.customer_count if self.customer_count > 0 else 'Not set'}
 Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
         
         self.selection_display.setText(display_text)
@@ -375,41 +419,34 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
             
         self.map_ready = True
         
-        # Suggested depot locations
         suggested_locations = [
             {
-                'name': 'Outskirts of Bangalore',
-                'coords': [13.0500, 77.7500],
-                'description': 'Good connectivity, away from airport NFZ'
+            'name': 'Outskirts of Bangalore', 
+             'coords': [13.0500, 77.7500], 
+             'description': 'Good connectivity, away from airport NFZ'
+             },
+            {'name': 'Chennai Surroundings', 
+             'coords': [12.8500, 80.0500], 
+             'description': 'Industrial area, good for logistics'
             },
-            {
-                'name': 'Chennai Surroundings',
-                'coords': [12.8500, 80.0500],
-                'description': 'Industrial area, good for logistics'
+            {'name': 'Mumbai Suburbs', 
+             'coords': [19.2000, 72.9500], 
+             'description': 'Outside nuclear facility zone'
             },
-            {
-                'name': 'Mumbai Suburbs',
-                'coords': [19.2000, 72.9500],
-                'description': 'Outside nuclear facility zone'
+            {'name': 'Delhi NCR Edge', 
+             'coords': [28.4000, 77.3000], 
+             'description': 'Away from airport and government areas'
             },
-            {
-                'name': 'Delhi NCR Edge',
-                'coords': [28.4000, 77.3000],
-                'description': 'Away from airport and government areas'
+            {'name': 'Hyderabad Outskirts', 
+             'coords': [17.1000, 78.6000], 
+             'description': 'Developing logistics hub'
             },
-            {
-                'name': 'Hyderabad Outskirts',
-                'coords': [17.1000, 78.6000],
-                'description': 'Developing logistics hub'
-            },
-            {
-                'name': 'Pune Industrial Area',
-                'coords': [18.4000, 73.7000],
-                'description': 'Away from air force station'
+            {'name': 'Pune Industrial Area', 
+             'coords': [18.4000, 73.7000], 
+             'description': 'Away from air force station'
             }
         ]
         
-        # Initialize map with data
         map_data = {
             "center": self.map_center,
             "zoom": self.map_zoom,
@@ -431,11 +468,11 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
             js_code = f"window.initializeDepotMap({json.dumps(map_data)});"
             self.map_view.page().runJavaScript(js_code)
             
-            js_code = f"window.updateCustomerCount({self.customer_count});"
-            self.map_view.page().runJavaScript(js_code)
+            if self.customer_count > 0:
+                js_code = f"window.updateCustomerCount({self.customer_count});"
+                self.map_view.page().runJavaScript(js_code)
             
             self.setup_js_callback()
-            
             print("Enhanced depot selection map initialized successfully!")
         except Exception as e:
             print(f"Error initializing map: {e}")
@@ -499,30 +536,53 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
             except Exception as e:
                 print(f"Error resetting map selection: {e}")
     
+    def validate_configuration(self):
+        """Validate the current configuration"""
+        errors = []
+        
+        if self.customer_count <= 0:
+            errors.append("Please specify the number of customers")
+        
+        total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+        if total_vehicles == 0:
+            errors.append("Please configure at least one vehicle in your fleet")
+        
+        if not self.selected_depot:
+            errors.append("Please select a depot location on the map")
+        
+        return errors
+    
     def confirm_depot_selection(self):
         """Confirm the depot selection and emit signal"""
-        if not self.selected_depot:
-            QMessageBox.warning(self, "Warning", "Please select a depot location first!")
+        errors = self.validate_configuration()
+        if errors:
+            error_message = "Please fix the following issues:\n\n" + "\n".join(f"• {error}" for error in errors)
+            
+            if self.customer_count <= 0:
+                self.customer_spinbox.setStyleSheet(self.customer_spinbox.styleSheet() + "; border: 2px solid #ff4444;")
+                QTimer.singleShot(3000, lambda: self.customer_spinbox.setStyleSheet(f"font-size: 13px; padding: 8px;"))
+            
+            total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+            if total_vehicles == 0:
+                for spinbox in [self.electric_spinbox, self.fuel_spinbox, self.drone_spinbox]:
+                    original_style = spinbox.styleSheet()
+                    spinbox.setStyleSheet(original_style + "; border: 2px solid #ff4444;")
+                    QTimer.singleShot(3000, lambda sb=spinbox, style=original_style: sb.setStyleSheet(style))
+            
+            QMessageBox.warning(self, "Configuration Incomplete", error_message)
             return
         
         lat, lng = self.selected_depot
         total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
         
-        # Validation
-        if total_vehicles == 0:
-            QMessageBox.warning(self, "Warning", "Please configure at least one vehicle in your fleet!")
-            return
-        
-        # Create custom message box without icon and with grey header
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("Confirm Depot & Fleet Configuration")
         
-        # Set the message box text
         msg_box.setText(
             f"Confirm your configuration:\n\n"
-            f"🚩 Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
-            f" Customers: {self.customer_count}\n\n"
-            f" Fleet Configuration:\n"
+            f"Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
+            f"Customers: {self.customer_count}\n\n"
+            f"Fleet Configuration:\n"
             f"   • Electric Trucks: {self.electric_trucks}\n"
             f"   • Fuel Trucks: {self.fuel_trucks}\n"
             f"   • Drones: {self.drones}\n"
@@ -531,47 +591,41 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
             f"Proceed to main application?"
         )
         
-        # Remove the icon by setting it to NoIcon
         msg_box.setIcon(QMessageBox.NoIcon)
-        
-        # Add buttons
         msg_box.addButton("Yes", QMessageBox.YesRole)
         msg_box.addButton("No", QMessageBox.NoRole)
         
-        # Style the message box with grey/black header
-        msg_box.setStyleSheet("""
-            QMessageBox {
+        msg_box.setStyleSheet(f"""
+            QMessageBox {{
                 background-color: #2d2d2d;
                 color: #ffffff;
-            }
-            QMessageBox QLabel {
+            }}
+            QMessageBox QLabel {{
                 color: #ffffff;
                 font-size: 13px;
                 padding: 10px;
-            }
-            QPushButton {
+            }}
+            QPushButton {{
                 background-color: #404040;
                 color: #ffffff;
                 border: 1px solid #555555;
                 border-radius: 4px;
                 padding: 8px 20px;
-                font-size: 12px;
+                font-size: 13px;
                 min-width: 60px;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #505050;
                 border-color: #666666;
-            }
-            QPushButton:pressed {
+            }}
+            QPushButton:pressed {{
                 background-color: #353535;
-            }
+            }}
         """)
         
-        # Show the message box and get the result
         reply = msg_box.exec_()
         
-        if reply == 0:  # Yes button (first button added)
-            # Emit signal with all configuration parameters
+        if reply == 0:
             self.depot_selected.emit(
                 lat, lng, 
                 self.customer_count,
@@ -583,7 +637,9 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
             print(f"  Depot: {lat:.6f}, {lng:.6f}")
             print(f"  Customers: {self.customer_count}")
             print(f"  Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D")
-            self.accept()
+            
+            if not self.as_widget:
+                self.accept()
     
     def accept(self):
         """Override accept to clean up"""
@@ -615,8 +671,7 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
         """Clean up on close"""
         if hasattr(self, 'selection_timer'):
             self.selection_timer.stop()
-
-        # Clean up the generated HTML file when the frontend stops
+        
         try:
             if hasattr(self, 'map_path') and os.path.exists(self.map_path):
                 os.remove(self.map_path)

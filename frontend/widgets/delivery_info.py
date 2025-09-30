@@ -27,6 +27,26 @@ class DeliveryInfoWidget(QWidget):
             
             # Depot info
             depot_group = QGroupBox("Depot Information")
+            depot_group.setStyleSheet("""
+                QGroupBox {
+                    font-size: 16px;
+                    font-weight: bold;
+                    color: #ffffff;
+                    background-color: #333333;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-top: 10px;
+                    border: 2px solid #404040;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                    color: #ff6b35;
+                    font-size: 16px;
+                    font-weight: bold;
+            }
+        """)
             depot_layout = QVBoxLayout(depot_group)
             
             self.depot_info = QLabel("No depot selected")
@@ -39,13 +59,57 @@ class DeliveryInfoWidget(QWidget):
             depot_layout.addWidget(self.customer_info)
             
             info_group = QGroupBox("Delivery Information")
+            info_group.setStyleSheet("""
+    QGroupBox {
+        font-size: 16px;
+        font-weight: bold;
+        color: #ffffff;
+        background-color: #333333;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 10px;
+        border: 2px solid #404040;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 10px;
+        padding: 0 5px 0 5px;
+        color: #ff6b35;
+        font-size: 16px;
+        font-weight: bold;
+    }
+""")
+            
             info_layout = QVBoxLayout(info_group)
             
             self.delivery_list = QListWidget()
+            self.delivery_list.setWordWrap(True)
+            self.delivery_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             info_layout.addWidget(self.delivery_list)
+            
             
             # Summary
             summary_group = QGroupBox("Summary")
+            summary_group.setStyleSheet("""
+    QGroupBox {
+        font-size: 16px;
+        font-weight: bold;
+        color: #ffffff;
+        background-color: #333333;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 10px;
+        border: 2px solid #404040;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 10px;
+        padding: 0 5px 0 5px;
+        color: #ff6b35;
+        font-size: 16px;
+        font-weight: bold;
+    }
+""")
             summary_layout = QGridLayout(summary_group)
             
             self.total_points = QLabel("0")

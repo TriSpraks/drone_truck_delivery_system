@@ -30,7 +30,7 @@ from core.api_handler import OptimizedRouteManager  # Use the corrected unified 
 from widgets.vehicle_control import VehicleControlPanel
 from widgets.delivery_info import DeliveryInfoWidget  
 from widgets.sound_monitoring import SoundGraphWidget, NoiseStatisticsWidget
-from utils.nfz_data import get_depot_selection_no_fly_zones
+from utils.nfz_data import get_india_no_fly_zones
 from resources.map_templates import HTML_TEMPLATE
 from ui.dialog import DepotSelectionWindow
 
@@ -167,7 +167,7 @@ class IndiaAirspaceMap(QMainWindow):
         self.map_zoom = MAP_ZOOM
         
         # No-fly zones data (subset for depot selection)
-        self.no_fly_zones = get_depot_selection_no_fly_zones()
+        self.no_fly_zones = get_india_no_fly_zones()
         
         # Vehicle system
         self.vehicles = {}
@@ -630,32 +630,32 @@ class IndiaAirspaceMap(QMainWindow):
             
             # Left sidebar (300px width)
             left_panel = QFrame()
-            left_panel.setMaximumWidth(300)
-            left_panel.setMinimumWidth(250)
+            left_panel.setMaximumWidth(400)
+            left_panel.setMinimumWidth(350)
             left_layout = QVBoxLayout(left_panel)
             
             # Logo/Title
-            title_label = QLabel("Optimized Delivery System")
-            title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #ff6b35; padding: 10px;")
+            title_label = QLabel("Drone Truck Delivery System")
+            title_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #ff6b35; padding: 10px;")
             title_label.setAlignment(Qt.AlignCenter)
             
             # Depot and fleet configuration info
             depot_info = QLabel(f"Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f}")
-            depot_info.setStyleSheet("font-size: 12px; color: #cccccc; padding: 5px; text-align: center;")
+            depot_info.setStyleSheet("font-size: 13px; color: #cccccc; padding: 5px; text-align: center;")
             depot_info.setAlignment(Qt.AlignCenter)
             
             customer_info = QLabel(f"Customers: {self.customer_count}")
-            customer_info.setStyleSheet("font-size: 12px; color: #8b5cf6; font-weight: bold; padding: 5px; text-align: center;")
+            customer_info.setStyleSheet("font-size: 13px; color: #8b5cf6; font-weight: bold; padding: 5px; text-align: center;")
             customer_info.setAlignment(Qt.AlignCenter)
             
             # Fleet configuration display
             fleet_info = QLabel(f"Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D")
-            fleet_info.setStyleSheet("font-size: 12px; color: #4CAF50; font-weight: bold; padding: 5px; text-align: center;")
+            fleet_info.setStyleSheet("font-size: 13px; color: #4CAF50; font-weight: bold; padding: 5px; text-align: center;")
             fleet_info.setAlignment(Qt.AlignCenter)
             
             total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
             fleet_summary = QLabel(f"Total Vehicles: {total_vehicles}")
-            fleet_summary.setStyleSheet("font-size: 11px; color: #FF9800; padding: 2px; text-align: center;")
+            fleet_summary.setStyleSheet("font-size: 13px; color: #FF9800; padding: 2px; text-align: center;")
             fleet_summary.setAlignment(Qt.AlignCenter)
             
             # Store references for updates
@@ -737,7 +737,7 @@ class IndiaAirspaceMap(QMainWindow):
             
             # Sound monitoring title
             sound_title = QLabel("Drone Sound Monitoring")
-            sound_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #ff6b35; padding: 5px;")
+            sound_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #ff6b35; padding: 10px;")
             
             try:
                 self.sound_graphs = SoundGraphWidget()

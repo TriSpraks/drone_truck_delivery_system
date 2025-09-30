@@ -692,7 +692,8 @@ DEPOT_SELECTION_HTML = """<!DOCTYPE html>
     font-family: 'Segoe UI', Arial, sans-serif;
   }
   #map { 
-    height: 100%; 
+    height: calc(120vh - 120px); 
+    min-height: 800px;
     margin: 0; 
     background: #0b1220; 
     border-radius: 12px;
