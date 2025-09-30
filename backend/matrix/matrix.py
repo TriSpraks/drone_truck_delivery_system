@@ -1,21 +1,18 @@
-# vehicle_matrix.py
 import pandas as pd
-from utils import db_handler, config
+import asyncio
+from utils import db_handler
 from .vehicle import FuelTruck, ElectricTruck, Drone
-
 
 async def generate_vehicle_matrix(nodes, dist_rows, fleet_config=None):
     """
-    Generate a vehicle matrix using actual vehicle metrics.
-    Considers weight, volume, distance, energy, emissions, and fleet availability.
+    Build vehicle matrix:
+      - Trucks: always feasible if within capacity
+      - Drones: only depot→customer and customer→depot if feasible
     """
-
     print("⚙️ Building vehicle matrix...")
-
-    # Clear old records
     await db_handler.clear_vehicle_matrix()
 
-    # --- Clean dist_rows ---
+    # Ensure all distances/durations are floats or None
     dist_rows = [
         [
             origin_id,
@@ -28,84 +25,79 @@ async def generate_vehicle_matrix(nodes, dist_rows, fleet_config=None):
         for origin_id, dest_id, truck_km, truck_dur, drone_km, drone_dur in dist_rows
     ]
 
-    # Convert nodes list to dict for quick lookup
     nodes_dict = {n["node_id"]: n for n in nodes}
-
-    # Available vehicle types
     vehicles = [FuelTruck(id="F"), ElectricTruck(id="E"), Drone(id="D")]
 
-    # Compute maximum distance for normalization
+    # Precompute max distance for normalization
     df = pd.DataFrame(dist_rows, columns=[
-        "origin_id", "dest_id",
-        "truck_distance", "truck_duration",
+        "origin_id", "dest_id", "truck_distance", "truck_duration",
         "drone_distance", "drone_duration"
     ])
     max_distance = float(df[["truck_distance", "drone_distance"]].max().max())
-
     metrics_cache = {}
 
-    def get_metrics(v, d):
-        """Cache metrics for efficiency"""
-        key = (v.id, round(d, 2))
+    def get_metrics(vehicle, distance):
+        key = (vehicle.id, round(distance, 2))
         if key not in metrics_cache:
-            metrics_cache[key] = v.metrics(d)
+            metrics_cache[key] = vehicle.metrics(distance)
         return metrics_cache[key]
 
-    # Normalization factors
-    max_energy = max((get_metrics(v, max_distance)["energy_kwh"] or 0) for v in vehicles)
-    max_emission = max((get_metrics(v, max_distance)["co2_kg"] or 0) for v in vehicles)
+    max_emission = max([m.get("co2_kg") or 0 for m in (get_metrics(v, max_distance) for v in vehicles)])
 
-    db_inserts = []
-
-    for origin_id, dest_id, truck_km, truck_dur, drone_km, drone_dur in dist_rows:
+    async def process_od_pair(od):
+        origin_id, dest_id, truck_km, truck_dur, drone_km, drone_dur = od
         if origin_id == dest_id:
-            continue
+            return None
 
         feasible_vehicles, feasible_distances, feasible_durations, feasible_costs = [], [], [], []
 
         for v in vehicles:
-            # Choose correct distance/duration for vehicle
-            if isinstance(v, (FuelTruck, ElectricTruck)):
-                distance, duration = truck_km, truck_dur
-            else:  # Drone
-                distance, duration = drone_km, drone_dur
-
+            # Determine which distance/duration to use
+            distance, duration = (drone_km, drone_dur) if isinstance(v, Drone) else (truck_km, truck_dur)
             if distance is None or duration is None:
                 continue
 
-            # Destination node details
-            node = nodes_dict[dest_id]
+            # Determine which node to check for payload
+            node = nodes_dict[dest_id] if not isinstance(v, Drone) or origin_id == "depot" else nodes_dict[origin_id]
 
-            # Check payload feasibility
-            if not v.can_carry(node["weight"], node["volume"], distance):
+            # Check payload and route feasibility
+            if not v.can_carry(node.get("weight", 0), node.get("volume", 0), distance):
+                continue
+            if isinstance(v, Drone) and not v.can_complete_route(distance):
                 continue
 
-            # Get full metrics
+            # Compute cost
             m = v.metrics(distance)
-            if not m.get("feasible", True):
-                continue
+            total_cost = round(v.total_cost(distance, max_emission), 2)
 
-            # Weighted cost function (α, β, γ from config)
-            total_cost = v.total_cost(distance, max_energy, max_emission)
-
-            # Append feasible result
             feasible_vehicles.append(v.id)
             feasible_distances.append(distance)
             feasible_durations.append(duration)
             feasible_costs.append(total_cost)
 
         if feasible_vehicles:
-            db_inserts.append([
+            return [
                 origin_id,
                 dest_id,
                 str(tuple(feasible_vehicles)),
                 str(tuple(feasible_distances)),
                 str(tuple(feasible_durations)),
-                str(tuple(feasible_costs))
-            ])
+                str(tuple(feasible_costs)),
+            ]
+        return None
 
-    # Bulk insert into DB
-    BATCH_SIZE = 500
+    # Limit concurrency for large matrices
+    semaphore = asyncio.Semaphore(50)
+
+    async def sem_process(od):
+        async with semaphore:
+            return await process_od_pair(od)
+
+    results = await asyncio.gather(*[sem_process(od) for od in dist_rows])
+    db_inserts = [r for r in results if r is not None]
+
+    # Insert in batches
+    BATCH_SIZE = 1000
     for i in range(0, len(db_inserts), BATCH_SIZE):
         await db_handler.insert_vehicle_matrix_bulk(db_inserts[i:i + BATCH_SIZE])
 

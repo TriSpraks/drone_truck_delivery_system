@@ -349,10 +349,20 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
         self.selection_display.setText(display_text)
     
     def create_map_file(self):
-        """Create the HTML map file with unique name to prevent conflicts"""
-        unique_id = str(int(time.time() * 1000))
-        self.map_path = os.path.abspath(f"depot_selection_map_{unique_id}.html")
-        
+        """Create or update the HTML map file, reusing the same file to prevent multiple files"""
+        # Use frontend directory for the file
+        frontend_dir = os.path.dirname(os.path.dirname(__file__))
+        self.map_path = os.path.join(frontend_dir, "depot_selection_map.html")
+
+        # Clean up old HTML files before creating new one
+        for file in os.listdir(frontend_dir):
+            if file.endswith('.html') and (file.startswith('depot_selection_map_') or file.startswith('optimized_map_') or file == 'map.html'):
+                try:
+                    os.remove(os.path.join(frontend_dir, file))
+                    print(f"Cleaned up old file: {file}")
+                except Exception as e:
+                    print(f"Error cleaning up {file}: {e}")
+
         with open(self.map_path, "w", encoding="utf-8") as f:
             f.write(DEPOT_SELECTION_HTML)
         self.map_view.setUrl(QUrl.fromLocalFile(self.map_path))
@@ -579,25 +589,39 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
         """Override accept to clean up"""
         if hasattr(self, 'selection_timer'):
             self.selection_timer.stop()
-        super().accept()
-    
-    def reject(self):
-        """Override reject to clean up"""
-        if hasattr(self, 'selection_timer'):
-            self.selection_timer.stop()
-        super().reject()
-    
-    def closeEvent(self, event):
-        """Clean up on close"""
-        if hasattr(self, 'selection_timer'):
-            self.selection_timer.stop()
-        
-        # Clean up map file
+        # Clean up the generated HTML file
         try:
             if hasattr(self, 'map_path') and os.path.exists(self.map_path):
                 os.remove(self.map_path)
                 print(f"Cleaned up map file: {self.map_path}")
         except Exception as e:
             print(f"Error cleaning up map file: {e}")
-        
+        super().accept()
+
+    def reject(self):
+        """Override reject to clean up"""
+        if hasattr(self, 'selection_timer'):
+            self.selection_timer.stop()
+        # Clean up the generated HTML file
+        try:
+            if hasattr(self, 'map_path') and os.path.exists(self.map_path):
+                os.remove(self.map_path)
+                print(f"Cleaned up map file: {self.map_path}")
+        except Exception as e:
+            print(f"Error cleaning up map file: {e}")
+        super().reject()
+    
+    def closeEvent(self, event):
+        """Clean up on close"""
+        if hasattr(self, 'selection_timer'):
+            self.selection_timer.stop()
+
+        # Clean up the generated HTML file when the frontend stops
+        try:
+            if hasattr(self, 'map_path') and os.path.exists(self.map_path):
+                os.remove(self.map_path)
+                print(f"Cleaned up map file: {self.map_path}")
+        except Exception as e:
+            print(f"Error cleaning up map file: {e}")
+
         event.accept()
