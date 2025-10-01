@@ -27,12 +27,14 @@ from utils.backend_connector import (DEFAULT_DEPOT_COORDS, MAP_CENTER, MAP_ZOOM,
                                    DEFAULT_WAVES, PAUSE_BETWEEN_WAVES, VEHICLE_SPEEDS, VEHICLE_WEIGHTS)
 from core.data_manager import VehicleData, DataSimulator
 from core.api_handler import OptimizedRouteManager  # Use the corrected unified route manager
+from core.backend_fetcher import BackendDataFetcher
 from widgets.vehicle_control import VehicleControlPanel
 from widgets.delivery_info import DeliveryInfoWidget  
 from widgets.sound_monitoring import SoundGraphWidget, NoiseStatisticsWidget
 from utils.nfz_data import get_india_no_fly_zones
 from resources.map_templates import HTML_TEMPLATE
 from ui.dialog import DepotSelectionWindow
+
 
 
 class OptimizedRouteBuilder(QThread):
@@ -176,6 +178,11 @@ class IndiaAirspaceMap(QMainWindow):
         self.wave_start_time = 0.0
         self.vehicles_started = False
         self.vehicles_paused = False
+        
+        # Wave management
+        self.backend_waves = {}  # Store all waves from backend
+        self.current_wave_number = 1
+        self.max_waves = 1
         
         # Route building thread
         self.route_builder = None
@@ -504,77 +511,85 @@ class IndiaAirspaceMap(QMainWindow):
             print(f"❌ Error in backend processing: {e}")
             return False
     
+    async def fetch_backend_assignments(self):
+        """Fetch wave assignments from backend instead of generating locally"""
+        print("\n=== FETCHING BACKEND WAVE ASSIGNMENTS ===")
+        
+        fetcher = BackendDataFetcher()
+        wave_data = await fetcher.fetch_wave_assignments(timeout=30, retry_count=3)
+    
+        if not wave_data:
+            print("❌ Failed to fetch backend data, falling back to local generation")
+            return self.create_optimal_delivery_assignments()
+        
+        # Parse wave data
+        self.backend_waves = fetcher.parse_wave_data(wave_data)
+        print(f"✅ Loaded {len(self.backend_waves)} waves from backend")
+        
+        # Store max waves for wave cycling
+        self.max_waves = len(self.backend_waves)
+        self.current_wave_number = 1
+        
+        # Convert first wave to delivery assignments format
+        assignments = self.convert_wave_to_assignments(self.backend_waves.get("wave_1", []))
+        
+        if not assignments:
+            print("❌ No valid assignments in wave_1, falling back to local generation")
+            return self.create_optimal_delivery_assignments()
+    
+        return assignments
+        
     def create_optimal_delivery_assignments(self):
-        """Create delivery assignments ensuring ALL points are covered with multi-delivery support"""
-        total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
-        delivery_points = self.delivery_points[:]
+        """Fallback method to create assignments when backend is unavailable"""
+        print("Creating fallback assignments locally...")
         
-        print(f"\n=== OPTIMIZED DELIVERY ALLOCATION ===")
-        print(f"Delivery points: {len(delivery_points)}")
-        print(f"Total vehicles: {total_vehicles}")
-        print(f"Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D")
-        
-        if total_vehicles == 0:
-            print("ERROR: No vehicles configured!")
-            return {}
-        
+        # Use the ImprovedDeliveryAssigner class
+        return ImprovedDeliveryAssigner.create_complete_assignments(
+            self.delivery_points,
+            self.electric_trucks,
+            self.fuel_trucks,
+            self.drones
+        )
+    
+    def convert_wave_to_assignments(self, wave_vehicles: List[Dict]) -> Dict:
+        """Convert backend wave format to frontend assignment format"""
         assignments = {}
         
-        # Create all vehicles with their types
-        all_vehicles = []
-        for i in range(self.drones):
-            all_vehicles.append(("Drone", i + 1))
-        for i in range(self.electric_trucks):
-            all_vehicles.append(("Electric Truck", i + 1))
-        for i in range(self.fuel_trucks):
-            all_vehicles.append(("Fuel Truck", i + 1))
+        for vehicle in wave_vehicles:
+            vehicle_name = vehicle["vehicle_id"].replace("_", " ")
         
-        # Calculate deliveries per vehicle
-        deliveries_per_vehicle = math.ceil(len(delivery_points) / total_vehicles)
-        print(f"Strategy: Each vehicle will handle up to {deliveries_per_vehicle} delivery points")
-        
-        # Distribute ALL delivery points to vehicles using round-robin
-        for i, delivery_point in enumerate(delivery_points):
-            vehicle_index = i % total_vehicles
-            vehicle_type, vehicle_num = all_vehicles[vehicle_index]
-            vehicle_name = f"{vehicle_type} {vehicle_num}"
-            
-            if vehicle_name not in assignments:
-                # First delivery point for this vehicle (primary delivery)
+            # Get delivery coordinates from node_ids
+            deliveries = []
+            for node_id in vehicle["node_ids"]:
+                # Find node coordinates from generated nodes
+                node_coord = self.get_node_coordinates(node_id)
+                if node_coord:
+                    deliveries.append(node_coord)
+                    
+            if deliveries:
                 assignments[vehicle_name] = {
-                    "type": vehicle_type,
-                    "primary_delivery": delivery_point[:],  # Primary delivery for route building
-                    "all_deliveries": [delivery_point[:]]   # List of all deliveries for this vehicle
-                }
-            else:
-                # Additional delivery points for this vehicle
-                assignments[vehicle_name]["all_deliveries"].append(delivery_point[:])
-        
-        # Verify complete coverage
-        total_assigned_points = sum(len(assignment["all_deliveries"]) for assignment in assignments.values())
-        unique_assigned_points = set()
-        for assignment in assignments.values():
-            for delivery in assignment["all_deliveries"]:
-                unique_assigned_points.add(tuple(delivery))
-        
-        print(f"Final assignment results:")
-        print(f"- Created vehicles: {len(assignments)}")
-        print(f"- Total delivery assignments: {total_assigned_points}")
-        print(f"- Unique delivery points covered: {len(unique_assigned_points)}")
-        print(f"- Original delivery points: {len(delivery_points)}")
-        
-        # Detailed breakdown
-        for vehicle_name, assignment in assignments.items():
-            deliveries_count = len(assignment["all_deliveries"])
-            print(f"  {vehicle_name}: {deliveries_count} deliveries")
-        
-        if len(unique_assigned_points) == len(delivery_points):
-            print("✅ SUCCESS: All delivery points have been assigned!")
-        else:
-            missing_points = len(delivery_points) - len(unique_assigned_points)
-            print(f"⚠️  WARNING: {missing_points} points might have assignment issues!")
-        
+                    "type": vehicle["type"],
+                    "primary_delivery": deliveries[0][:],
+                    "all_deliveries": deliveries,
+                    "backend_route": vehicle["route"],  # Store backend route info
+                    "distance": vehicle["distance"],
+                    "cost": vehicle["cost"]
+            }
+        print(f"Converted {len(assignments)} vehicles from backend wave")
         return assignments
+    
+    def get_node_coordinates(self, node_id: str) -> Optional[List[float]]:
+        """Get coordinates for a node_id from customer_nodes or depot"""
+        if node_id == "depot":
+            return self.depot_coords[:]
+
+        # Search in customer nodes
+        if hasattr(self, 'customer_nodes'):
+            for node in self.customer_nodes:
+                if node["node_id"] == node_id:
+                    return node["coords"][:]
+    
+        return None
     
     def setup_ui(self):
         """Setup UI with sidebar layout"""
@@ -682,6 +697,12 @@ class IndiaAirspaceMap(QMainWindow):
             self.restart_action.setVisible(False)
             toolbar.addAction(self.restart_action)
             
+            # ADD THIS NEW BUTTON HERE:
+            self.next_wave_action = QAction("⏭ Next Wave", self)
+            self.next_wave_action.triggered.connect(self.start_next_wave)
+            self.next_wave_action.setVisible(False)  # Show only when wave completes
+            toolbar.addAction(self.next_wave_action)
+            
             # Map view
             self.map_view = QWebEngineView()
             self.map_view.loadFinished.connect(self.on_map_ready)
@@ -764,52 +785,51 @@ class IndiaAirspaceMap(QMainWindow):
             self.start_stop_action.setToolTip("Click to resume vehicle simulation")
     
     def start_vehicles_optimized(self):
-        """Start vehicles with optimized route building"""
+        """Start vehicles with backend wave data"""
         if self._widgets_destroyed or self._shutdown_in_progress:
             return False
-            
+        
         if not self.map_ready:
             QMessageBox.warning(self, "Map Not Ready", "Please wait for the map to finish loading.")
             return False
         
         if not self.vehicles_started:
-            # Create optimal delivery assignments with FULL coverage
-            delivery_assignments = self.create_optimal_delivery_assignments()
+            # Fetch assignments from backend
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            delivery_assignments = loop.run_until_complete(self.fetch_backend_assignments())
+            loop.close()
             
             if not delivery_assignments:
-                QMessageBox.warning(self, "No Assignments", "No delivery assignments could be created.")
+                QMessageBox.warning(self, "No Assignments", "Failed to get assignments from backend.")
                 return False
-            
-            # Verify all points are assigned before proceeding
-            total_assigned = sum(len(assignment["all_deliveries"]) for assignment in delivery_assignments.values())
-            if total_assigned < len(self.delivery_points):
-                print(f"WARNING: Only {total_assigned}/{len(self.delivery_points)} points assigned!")
-            
-            # Thread-safe progress dialog creation
+        
+            # Show progress dialog
             self._progress_mutex.lock()
             try:
                 if self.progress_dialog is None:
-                    self.progress_dialog = QProgressDialog("Building optimized routes...", "Cancel", 0, 100, self)
-                    self.progress_dialog.setWindowTitle("Optimizing Fleet Routes")
+                    self.progress_dialog = QProgressDialog(
+                        "Building routes from backend data...", "Cancel", 0, 100, self
+                    )
+                    self.progress_dialog.setWindowTitle("Loading Backend Routes")
                     self.progress_dialog.setModal(True)
                     self.progress_dialog.show()
             finally:
                 self._progress_mutex.unlock()
             
-            # Start background route building
+            # Build routes using backend assignments
             self.route_builder = OptimizedRouteBuilder(self.depot_coords, delivery_assignments, self)
             self.route_builder.progress_updated.connect(self.on_route_progress)
             self.route_builder.all_routes_completed.connect(self.on_routes_completed)
             self.route_builder.start()
-            
+        
             self.vehicles_started = True
             self.vehicles_paused = False
-            
         else:
-            # Resume paused vehicles
+            # Resume
             self.vehicles_paused = False
             self.update_all_vehicle_statuses("Moving")
-        
+    
         return True
     
     def on_route_progress(self, progress, status):
@@ -889,6 +909,101 @@ class IndiaAirspaceMap(QMainWindow):
             )
         except Exception as e:
             print(f"Error showing completion message: {e}")
+            
+    def start_next_wave(self):
+        """Start the next wave of vehicles"""
+        if self.current_wave_number >= self.max_waves:
+            print("All waves completed!")
+            QMessageBox.information(self, "Complete", "All delivery waves completed!")
+            return
+
+        self.current_wave_number += 1
+        wave_key = f"wave_{self.current_wave_number}"
+
+        if wave_key not in self.backend_waves:
+            print(f"Wave {self.current_wave_number} not found")
+            return
+
+        # Stop current vehicles
+        self.stop_vehicles_complete()
+
+        # Load next wave
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        assignments = self.convert_wave_to_assignments(self.backend_waves[wave_key])
+        loop.close()
+
+        # Start new wave
+        self.vehicles_started = False
+        QTimer.singleShot(1000, lambda: self.start_wave_with_assignments(assignments))
+
+    def start_wave_with_assignments(self, assignments):
+        """Start a specific wave with given assignments"""
+        if self._widgets_destroyed or self._shutdown_in_progress:
+            return False
+
+        if not self.map_ready:
+            QMessageBox.warning(self, "Map Not Ready", "Please wait for the map to finish loading.")
+            return False
+
+        if not assignments:
+            QMessageBox.warning(self, "No Assignments", "No assignments available for this wave.")
+            return False
+
+        # Show progress dialog
+        self._progress_mutex.lock()
+        try:
+            if self.progress_dialog is None:
+                self.progress_dialog = QProgressDialog(
+                    f"Building routes for Wave {self.current_wave_number}...", 
+                    "Cancel", 0, 100, self
+                )
+                self.progress_dialog.setWindowTitle(f"Wave {self.current_wave_number} Loading")
+                self.progress_dialog.setModal(True)
+                self.progress_dialog.show()
+        finally:
+            self._progress_mutex.unlock()
+
+        # Build routes using wave assignments
+        self.route_builder = OptimizedRouteBuilder(self.depot_coords, assignments, self)
+        self.route_builder.progress_updated.connect(self.on_route_progress)
+        self.route_builder.all_routes_completed.connect(self.on_wave_routes_completed)
+        self.route_builder.start()
+
+        self.vehicles_started = True
+        self.vehicles_paused = False
+
+        return True
+
+    def on_wave_routes_completed(self, vehicles_dict):
+        """Handle completion of wave route building"""
+        if self._widgets_destroyed or self._shutdown_in_progress:
+            return
+
+        # Clean up progress dialog
+        self._cleanup_progress_dialog()
+
+        # Store vehicles and start simulation
+        self.vehicles = vehicles_dict
+        self.wave_running = True
+        self.wave_start_time = time.time()
+
+        # Update UI
+        self.update_all_vehicle_statuses("Moving")
+
+        # Send to map
+        self.send_vehicles_to_js_batch()
+
+        # Update status bar with wave info
+        try:
+            self.statusBar().showMessage(
+                f"Wave {self.current_wave_number}/{self.max_waves} - "
+                f"{len(self.vehicles)} vehicles active"
+            )
+        except Exception as e:
+            print(f"Error updating status bar: {e}")
+
+        print(f"✅ Wave {self.current_wave_number} started with {len(self.vehicles)} vehicles")
     
     def _cleanup_progress_dialog(self):
         """Safely clean up progress dialog"""
@@ -1097,20 +1212,24 @@ class IndiaAirspaceMap(QMainWindow):
         # Check if all vehicles completed their routes
         if self.wave_running and self.all_vehicles_returned():
             self.wave_running = False
-            print(f"All vehicles completed their delivery routes!")
-            
+            print(f"Wave {self.current_wave_number} completed!")  # CHANGED THIS LINE
+
+            # Show next wave button if more waves available
+            if self.current_wave_number < self.max_waves and self._is_valid_widget(self.next_wave_action):
+                self.next_wave_action.setVisible(True)
+
             # Calculate final statistics
             total_deliveries = sum(len(v.get("all_deliveries", [v["assigned_delivery"]])) for v in self.vehicles.values())
             total_unique_points = set()
             for v in self.vehicles.values():
                 for delivery in v.get("all_deliveries", [v["assigned_delivery"]]):
                     total_unique_points.add(tuple(delivery))
-            
+
             # Update status bar
             try:
                 if hasattr(self, 'statusBar') and not self._widgets_destroyed:
                     self.statusBar().showMessage(
-                        f"Delivery cycle completed - "
+                        f"Wave {self.current_wave_number}/{self.max_waves} completed - "  # CHANGED THIS LINE
                         f"Fleet: {len(self.vehicles)} vehicles - "
                         f"Completed: {total_deliveries} delivery assignments covering {len(total_unique_points)} unique points"
                     )
