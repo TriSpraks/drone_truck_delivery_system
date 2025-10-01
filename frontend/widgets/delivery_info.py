@@ -70,6 +70,10 @@ class DeliveryInfoWidget(QWidget):
         margin-top: 10px;
         border: 2px solid #404040;
     }
+    QScrollBar:vertical {
+        width: 12px;
+        border-radius: 5px;
+    }
     QGroupBox::title {
         subcontrol-origin: margin;
         left: 10px;
