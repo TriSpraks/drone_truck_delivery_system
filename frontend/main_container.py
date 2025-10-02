@@ -6,6 +6,7 @@ from PyQt5.QtCore import Qt
 from config.app_config import DARK_STYLE
 from ui.dialog import DepotSelectionWindow
 from main import IndiaAirspaceMap
+from core.api_handler import fetch_solution_and_render_map
 
 
 class MainContainer(QMainWindow):
@@ -78,3 +79,12 @@ class MainContainer(QMainWindow):
             self.main_app.closeEvent(event)
         
         event.accept()
+    
+    def refresh_routes_map(self):
+        try:
+            path = fetch_solution_and_render_map(output_path="frontend_routes_map.html", open_in_browser=False)
+            print("Map saved to", path)
+            # if using PyQt/QtWebEngine you can load this file into the web view widget
+            # webview.load(QUrl.fromLocalFile(os.path.abspath(path)))
+        except Exception as e:
+            print("Failed to build routes map:", e)

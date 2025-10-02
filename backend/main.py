@@ -2,6 +2,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pathlib import Path
 import time
 import json
 
@@ -208,29 +210,24 @@ async def compute_vehicle_matrix_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/initial_solution")
-async def get_initial_solution():
-    """
-    Fetch nodes, vehicles, and matrix from DB and generate an initial solution.
-    Returns JSON with waves-first structure.
-    """
-    solution = await build_initial_solution()
+async def api_initial_solution():
+    p = Path(__file__).parent / "initial_solution.json"
+    if not p.exists():
+        return JSONResponse({"error": "initial_solution.json not found"}, status_code=404)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data
+    except Exception as e:
+        return JSONResponse({"error": "failed to read initial_solution.json", "detail": str(e)}, status_code=500)
 
-    # Round distances and costs to 4 decimals
-    for wave in solution.values():
-        for vehicle_type in ["drones", "trucks"]:
-            for v in wave[vehicle_type]:
-                if "distance" in v:
-                    v["distance"] = round(v["distance"], 4)
-                if "cost" in v:
-                    v["cost"] = round(v["cost"], 4)
-
-    # Save to JSON with arrays in single lines
-    with open("initial_solution.json", "w") as f:
-        json.dump(solution, f, indent=2, separators=(',', ': '), ensure_ascii=False)
-
-    return solution
-
-    return {"status": "success", "initial_solution": solution}
+@app.get("/api/nodes")
+async def api_nodes():
+    # uses your existing async db handler
+    try:
+        nodes = await db_handler.get_nodes()
+        return nodes
+    except Exception as e:
+        return JSONResponse({"error": "failed to fetch nodes", "detail": str(e)}, status_code=500)
 # ----------------- Run -----------------
 if __name__ == "__main__":
     import uvicorn

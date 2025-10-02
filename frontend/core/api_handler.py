@@ -137,7 +137,6 @@ QMessageBox {
 QPushButton:disabled {
     background-color: #666666;
     color: #999999;
-}
 """
 
 # Default configuration values
@@ -192,9 +191,11 @@ import random
 import time
 import numpy as np
 import requests
+import webbrowser
+from typing import List, Dict, Optional, Tuple
+from core.route_plotter import build_map_from_solution, build_node_lookup
+from config.app_config import BACKEND_URL  # ensure BACKEND_URL is set like "http://127.0.0.1:8000"
 import threading
-from typing import Dict, List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
 
 
 class BaseRouteManager:
@@ -846,6 +847,28 @@ def test_unified_routing():
     print(f"Single route has {len(single_route)} waypoints")
     
     print("\nAll tests completed successfully!")
+
+
+def fetch_solution_and_render_map(output_path: str = "routes_map.html", open_in_browser: bool = True) -> str:
+    """
+    Fetch solution and nodes from backend, build map via route_plotter and save HTML file.
+    Returns the output file path.
+    """
+    sol_resp = requests.get(f"{BACKEND_URL}/api/initial_solution", timeout=15)
+    sol_resp.raise_for_status()
+    solution = sol_resp.json()
+
+    nodes_resp = requests.get(f"{BACKEND_URL}/api/nodes", timeout=15)
+    nodes_resp.raise_for_status()
+    nodes = nodes_resp.json()
+
+    nodes_lookup = build_node_lookup(nodes)
+    m = build_map_from_solution(solution, nodes_lookup)
+    m.save(output_path)
+
+    if open_in_browser:
+        webbrowser.open(output_path)
+    return output_path
 
 
 if __name__ == "__main__":

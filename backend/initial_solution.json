@@ -4,420 +4,91 @@
       {
         "vehicle_id": "Drone_1",
         "node_ids": [
-          "cust_44"
+          "cust_1"
         ],
         "route": [
           "depot",
-          "cust_44",
-          "depot"
-        ],
-        "distance": 18.88,
-        "cost": 51.5,
-        "total_weight": 2.21,
-        "total_volume": 1527.0
-      },
-      {
-        "vehicle_id": "Drone_2",
-        "node_ids": [
-          "cust_2"
-        ],
-        "route": [
-          "depot",
-          "cust_2",
+          "cust_1",
           "depot"
         ],
         "distance": 9.32,
         "cost": 47.56,
-        "total_weight": 4.35,
-        "total_volume": 2996.0
-      },
-      {
-        "vehicle_id": "Drone_3",
-        "node_ids": [
-          "cust_4"
-        ],
-        "route": [
-          "depot",
-          "cust_4",
-          "depot"
-        ],
-        "distance": 5.12,
-        "cost": 45.84,
-        "total_weight": 3.3,
-        "total_volume": 5706.0
-      },
-      {
-        "vehicle_id": "Drone_4",
-        "node_ids": [
-          "cust_3"
-        ],
-        "route": [
-          "depot",
-          "cust_3",
-          "depot"
-        ],
-        "distance": 1.56,
-        "cost": 44.36,
-        "total_weight": 3.46,
-        "total_volume": 1835.0
-      },
-      {
-        "vehicle_id": "Drone_5",
-        "node_ids": [
-          "cust_5"
-        ],
-        "route": [
-          "depot",
-          "cust_5",
-          "depot"
-        ],
-        "distance": 5.78,
-        "cost": 46.1,
-        "total_weight": 1.98,
-        "total_volume": 16423.0
+        "total_weight": 1.4,
+        "total_volume": 2223.0
       }
     ],
     "trucks": [
       {
         "vehicle_id": "E_Truck_1",
         "node_ids": [
-          "cust_28",
-          "cust_43",
-          "cust_8",
-          "cust_18",
-          "cust_9",
-          "cust_11",
-          "cust_41",
-          "cust_38",
-          "cust_10",
-          "cust_31",
-          "cust_26"
+          "cust_5",
+          "cust_2"
         ],
         "route": [
           "depot",
-          "cust_28",
-          "cust_43",
-          "cust_8",
-          "cust_18",
-          "cust_9",
-          "cust_11",
-          "cust_41",
-          "cust_38",
-          "cust_10",
-          "cust_31",
-          "cust_26",
+          "cust_5",
+          "cust_2",
           "depot"
         ],
-        "distance": 143.6,
-        "cost": 59.36,
-        "total_weight": 4848.68,
-        "total_volume": 26576894.0,
+        "distance": 117.82,
+        "cost": 48.78,
+        "total_weight": 995.27,
+        "total_volume": 1695298.0,
         "capacity_utilization": {
-          "weight_percent": 70.27,
-          "volume_percent": 98.43
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_2",
-        "node_ids": [
-          "cust_19",
-          "cust_49",
-          "cust_16",
-          "cust_39",
-          "cust_6",
-          "cust_32",
-          "cust_30"
-        ],
-        "route": [
-          "depot",
-          "cust_19",
-          "cust_49",
-          "cust_16",
-          "cust_39",
-          "cust_6",
-          "cust_32",
-          "cust_30",
-          "depot"
-        ],
-        "distance": 147.49,
-        "cost": 60.98,
-        "total_weight": 4157.88,
-        "total_volume": 14559434.0,
-        "capacity_utilization": {
-          "weight_percent": 60.26,
-          "volume_percent": 53.92
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_3",
-        "node_ids": [
-          "cust_27",
-          "cust_15",
-          "cust_7"
-        ],
-        "route": [
-          "depot",
-          "cust_27",
-          "cust_15",
-          "cust_7",
-          "depot"
-        ],
-        "distance": 139.76,
-        "cost": 57.79,
-        "total_weight": 426.84,
-        "total_volume": 9967243.0,
-        "capacity_utilization": {
-          "weight_percent": 6.19,
-          "volume_percent": 36.92
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_4",
-        "node_ids": [
-          "cust_20",
-          "cust_45",
-          "cust_50",
-          "cust_17"
-        ],
-        "route": [
-          "depot",
-          "cust_20",
-          "cust_45",
-          "cust_50",
-          "cust_17",
-          "depot"
-        ],
-        "distance": 142.55,
-        "cost": 58.93,
-        "total_weight": 1482.35,
-        "total_volume": 9833293.0,
-        "capacity_utilization": {
-          "weight_percent": 21.48,
-          "volume_percent": 36.42
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_5",
-        "node_ids": [
-          "cust_12",
-          "cust_22"
-        ],
-        "route": [
-          "depot",
-          "cust_12",
-          "cust_22",
-          "depot"
-        ],
-        "distance": 141.15,
-        "cost": 58.36,
-        "total_weight": 978.68,
-        "total_volume": 4979492.0,
-        "capacity_utilization": {
-          "weight_percent": 14.18,
-          "volume_percent": 18.44
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_6",
-        "node_ids": [
-          "cust_13",
-          "cust_21",
-          "cust_36"
-        ],
-        "route": [
-          "depot",
-          "cust_13",
-          "cust_21",
-          "cust_36",
-          "depot"
-        ],
-        "distance": 148.79,
-        "cost": 61.51,
-        "total_weight": 348.99,
-        "total_volume": 4680012.0,
-        "capacity_utilization": {
-          "weight_percent": 5.06,
-          "volume_percent": 17.33
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_7",
-        "node_ids": [
-          "cust_40",
-          "cust_48"
-        ],
-        "route": [
-          "depot",
-          "cust_40",
-          "cust_48",
-          "depot"
-        ],
-        "distance": 130.05,
-        "cost": 53.78,
-        "total_weight": 1331.97,
-        "total_volume": 9464045.0,
-        "capacity_utilization": {
-          "weight_percent": 19.3,
-          "volume_percent": 35.05
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_8",
-        "node_ids": [
-          "cust_46"
-        ],
-        "route": [
-          "depot",
-          "cust_46",
-          "depot"
-        ],
-        "distance": 107.01,
-        "cost": 44.24,
-        "total_weight": 509.08,
-        "total_volume": 3534103.0,
-        "capacity_utilization": {
-          "weight_percent": 7.38,
-          "volume_percent": 13.09
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_9",
-        "node_ids": [
-          "cust_29",
-          "cust_35"
-        ],
-        "route": [
-          "depot",
-          "cust_29",
-          "cust_35",
-          "depot"
-        ],
-        "distance": 133.63,
-        "cost": 55.25,
-        "total_weight": 814.66,
-        "total_volume": 2732216.0,
-        "capacity_utilization": {
-          "weight_percent": 11.81,
-          "volume_percent": 10.12
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_10",
-        "node_ids": [
-          "cust_24",
-          "cust_42"
-        ],
-        "route": [
-          "depot",
-          "cust_24",
-          "cust_42",
-          "depot"
-        ],
-        "distance": 140.47,
-        "cost": 58.08,
-        "total_weight": 1702.59,
-        "total_volume": 4304568.0,
-        "capacity_utilization": {
-          "weight_percent": 24.68,
-          "volume_percent": 15.94
+          "weight_percent": 14.42,
+          "volume_percent": 6.28
         }
       },
       {
         "vehicle_id": "F_Truck_1",
         "node_ids": [
-          "cust_47",
-          "cust_25",
-          "cust_33",
-          "cust_34",
-          "cust_14"
+          "cust_3",
+          "cust_4"
         ],
         "route": [
           "depot",
-          "cust_47",
-          "cust_25",
-          "cust_33",
-          "cust_34",
-          "cust_14",
+          "cust_3",
+          "cust_4",
           "depot"
         ],
-        "distance": 300.87,
-        "cost": 124.39,
-        "total_weight": 1910.0,
-        "total_volume": 8900488.0,
+        "distance": 218.21,
+        "cost": 90.32,
+        "total_weight": 543.84,
+        "total_volume": 4004438.0,
         "capacity_utilization": {
-          "weight_percent": 25.47,
-          "volume_percent": 32.96
-        }
-      },
-      {
-        "vehicle_id": "F_Truck_2",
-        "node_ids": [
-          "cust_23"
-        ],
-        "route": [
-          "depot",
-          "cust_23",
-          "depot"
-        ],
-        "distance": 156.4,
-        "cost": 64.66,
-        "total_weight": 518.71,
-        "total_volume": 630781.0,
-        "capacity_utilization": {
-          "weight_percent": 6.92,
-          "volume_percent": 2.34
-        }
-      },
-      {
-        "vehicle_id": "E_Truck_1",
-        "node_ids": [
-          "cust_37",
-          "cust_1"
-        ],
-        "route": [
-          "depot",
-          "cust_37",
-          "cust_1",
-          "depot"
-        ],
-        "distance": 9.98,
-        "cost": 4.12,
-        "total_weight": 7.78,
-        "total_volume": 21789.0,
-        "capacity_utilization": {
-          "weight_percent": 0.11,
-          "volume_percent": 0.08
+          "weight_percent": 7.25,
+          "volume_percent": 14.83
         }
       }
     ],
-    "total_distance": 1882.41,
-    "total_cost": 996.81,
-    "total_weight": 19053.51,
-    "total_volume": 100212845.0
+    "total_distance": 345.35,
+    "total_cost": 186.66,
+    "total_weight": 1540.51,
+    "total_volume": 5701959.0
   },
   "summary": {
     "total_waves": 1,
-    "total_nodes_assigned": 50,
-    "total_drone_assignments": 5,
-    "total_truck_assignments": 13,
-    "total_distance": 1882.41,
-    "total_cost": 996.81,
-    "total_weight": 19053.51,
-    "total_volume": 100212845.0,
+    "total_nodes_assigned": 5,
+    "total_drone_assignments": 1,
+    "total_truck_assignments": 2,
+    "total_distance": 345.35,
+    "total_cost": 186.66,
+    "total_weight": 1540.51,
+    "total_volume": 5701959.0,
     "wave_breakdown": {
       "wave_1": {
-        "nodes_assigned": 50,
-        "drone_routes": 5,
-        "truck_routes": 13,
-        "total_distance": 1882.41,
-        "total_cost": 996.81,
-        "total_weight": 19053.51,
-        "total_volume": 100212845.0
+        "nodes_assigned": 5,
+        "drone_routes": 1,
+        "truck_routes": 2,
+        "total_distance": 345.35,
+        "total_cost": 186.66,
+        "total_weight": 1540.51,
+        "total_volume": 5701959.0
       }
     },
     "efficiency_metrics": {
-      "average_cost_per_node": 19.9362,
-      "average_distance_per_node": 37.6482
+      "average_cost_per_node": 37.332,
+      "average_distance_per_node": 69.07
     },
     "unassigned_nodes_count": 0,
     "assignment_success_rate": 100.0
