@@ -281,9 +281,9 @@ class OptimizedRouteManager(BaseRouteManager):
     # Class-level cache and configuration
     _route_cache = {}
     _cache_lock = threading.Lock()
-    MAX_WORKERS = 8
-    REQUEST_TIMEOUT = 3
-    BATCH_SIZE = 15
+    MAX_WORKERS = 4
+    REQUEST_TIMEOUT = 5
+    BATCH_SIZE = 10
     
     def __init__(self):
         super().__init__()
@@ -351,46 +351,84 @@ class OptimizedRouteManager(BaseRouteManager):
     def _process_truck_routes_parallel(cls, truck_routes: List[Dict], manager) -> Dict:
         """Process truck routes in parallel with batching"""
         results = {}
-        
+
         # Process in smaller batches
         for i in range(0, len(truck_routes), cls.BATCH_SIZE):
             batch = truck_routes[i:i + cls.BATCH_SIZE]
             print(f"Processing batch {i//cls.BATCH_SIZE + 1}: {len(batch)} routes")
-            
+
             with ThreadPoolExecutor(max_workers=cls.MAX_WORKERS) as executor:
                 future_to_request = {
                     executor.submit(
                         cls._build_single_route_with_timeout,
                         req['depot'],
-                        req['delivery'],
+                        req['all_deliveries'],
                         manager
                     ): req for req in batch
                 }
-                
-                for future in as_completed(future_to_request, timeout=20):
+
+                for future in as_completed(future_to_request, timeout=60):  # ← 30 second batch timeout  # Increase to 60s
                     request = future_to_request[future]
                     try:
-                        route = future.result(timeout=cls.REQUEST_TIMEOUT)
-                        results[request['vehicle_name']] = {
-                            "route": route,
-                            "all_deliveries": request['all_deliveries']
-                        }
+                        route = future.result(timeout=20)  # ← 20 second per-route timeout
+                        if route and len(route) >= 2:
+                            results[request['vehicle_name']] = {
+                                "route": route,
+                                "all_deliveries": request['all_deliveries']
+                            }
+                            print(f"✓ {request['vehicle_name']}: {len(route)} points")
+                        else:
+                            raise ValueError("Empty route returned")
                     except Exception as e:
-                        print(f"Route failed for {request['vehicle_name']}, using fallback: {e}")
+                        print(f"✗ Route failed for {request['vehicle_name']}, using fallback")
                         fallback_route = manager._create_realistic_path(
                             request['depot'], request['delivery']
                         )
+                        fallback_route.extend(manager._create_realistic_path(
+                            request['delivery'], request['depot']
+                        )[1:])  # Add return journey
                         results[request['vehicle_name']] = {
                             "route": fallback_route,
                             "all_deliveries": request['all_deliveries']
                         }
-        
+
         return results
     
     @classmethod
-    def _build_single_route_with_timeout(cls, depot: List[float], delivery: List[float], manager) -> List[List[float]]:
-        """Build single route with timeout handling"""
-        return cls._get_truck_route_with_fallback(depot[0], depot[1], delivery[0], delivery[1], manager)
+    def _build_single_route_with_timeout(cls, depot: List[float], deliveries: List[List[float]], manager) -> List[List[float]]:
+        """Build single route visiting ALL delivery points"""
+        if len(deliveries) == 1:
+            # Simple single delivery route
+            return cls._get_truck_route_with_fallback(
+                depot[0], depot[1], 
+                deliveries[0][0], deliveries[0][1], 
+                manager
+            )
+        else:
+            # Multi-stop route - build path through all deliveries
+            route = [depot[:]]
+            current_pos = depot
+
+            for delivery in deliveries:
+                # Get route segment from current position to next delivery
+                segment = cls._get_truck_route_with_fallback(
+                    current_pos[0], current_pos[1],
+                    delivery[0], delivery[1],
+                    manager
+                )
+                # Add segment (skip first point as it's the current position)
+                route.extend(segment[1:])
+                current_pos = delivery
+
+            # Return to depot
+            return_segment = cls._get_truck_route_with_fallback(
+                current_pos[0], current_pos[1],
+                depot[0], depot[1],
+                manager
+            )
+            route.extend(return_segment[1:])
+
+            return route
     
     @classmethod
     def _get_truck_route_with_fallback(cls, start_lat: float, start_lon: float, 
@@ -425,38 +463,53 @@ class OptimizedRouteManager(BaseRouteManager):
             cls._route_cache[cache_key] = fallback_route[:]
         
         return fallback_route
-    
+
     @classmethod
     def _get_osrm_route_fast(cls, start_lat: float, start_lon: float, end_lat: float, end_lon: float) -> Optional[List[List[float]]]:
-        """Fast OSRM API call"""
+        """Fast OSRM API call with timeout"""
         start_coord = f"{start_lon},{start_lat}"
         end_coord = f"{end_lon},{end_lat}"
-        
+
         url = f"http://router.project-osrm.org/route/v1/driving/{start_coord};{end_coord}"
         params = {
             'overview': 'simplified',
             'geometries': 'geojson',
             'steps': 'false'
         }
-        
-        response = requests.get(url, params=params, timeout=cls.REQUEST_TIMEOUT)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('routes') and len(data['routes']) > 0:
-                coordinates = data['routes'][0]['geometry']['coordinates']
-                
-                route_points = []
-                for i, coord in enumerate(coordinates):
-                    if i % 3 == 0 or i == len(coordinates) - 1:
-                        route_points.append([coord[1], coord[0]])  # lat, lon
-                
-                if route_points:
-                    route_points[0] = [start_lat, start_lon]
-                    route_points[-1] = [end_lat, end_lon]
-                
-                return route_points
-        
+
+        try:
+            response = requests.get(url, params=params, timeout=15)  # ← CRITICAL: 5 second timeout
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('routes') and len(data['routes']) > 0:
+                    coordinates = data['routes'][0]['geometry']['coordinates']
+
+                    route_points = []
+                    for i, coord in enumerate(coordinates):
+                        if i % 3 == 0 or i == len(coordinates) - 1:
+                            route_points.append([coord[1], coord[0]])
+
+                    if route_points:
+                        route_points[0] = [start_lat, start_lon]
+                        route_points[-1] = [end_lat, end_lon]
+
+                    print(f"✓ OSRM route: {len(route_points)} points")
+                    return route_points
+                else:
+                    print(f"✗ OSRM no routes found")
+            else:
+                print(f"✗ OSRM failed: HTTP {response.status_code}")
+        except requests.Timeout:
+            print(f"✗ OSRM timeout after 5s - using fallback")
+            return None  # ← Return None to trigger fallback
+        except requests.RequestException as e:
+            print(f"✗ OSRM request error: {e}")
+            return None
+        except Exception as e:
+            print(f"✗ OSRM error: {e}")
+            return None
+
         return None
     
     @classmethod

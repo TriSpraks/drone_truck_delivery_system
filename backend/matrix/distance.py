@@ -1,68 +1,42 @@
-# backend/distance.py
-
 import math
 import asyncio
 import aiohttp
-import csv
-import os
-from utils import config  # Import project-specific configuration (API keys, speeds, etc.)
+import random
+import logging
+from utils import config
+from .vehicle import Drone
 
-# OpenRouteService API endpoint for driving-car distance matrix
 ORS_API_URL = "https://api.openrouteservice.org/v2/matrix/driving-car"
-MAX_CHUNK_SIZE = 25  # ORS free-tier often limits max 25x25 matrices
 
+logger = logging.getLogger(__name__)
 
-def euclidean_distance_km(p1, p2, use_elevation=True):
-    """
-    Compute straight-line distance (in km) between two points, optionally using elevation.
-    
-    Parameters:
-    - p1, p2: dict with keys 'lat', 'lon', optionally 'elevation'
-    - use_elevation: whether to factor in elevation differences
-
-    Returns:
-    - distance in kilometers (float)
-    """
+def euclidean_distance_km(p1: dict, p2: dict) -> float:
     lat1, lon1 = p1["lat"], p1["lon"]
     lat2, lon2 = p2["lat"], p2["lon"]
-
-    # Average latitude in radians for scaling longitude distance
     avg_lat_rad = math.radians((lat1 + lat2) / 2)
-
-    # Convert lat/lon differences to km
     dx = (lon2 - lon1) * 111 * math.cos(avg_lat_rad)
     dy = (lat2 - lat1) * 111
-
     dz = 0
-    if use_elevation and "elevation" in p1 and "elevation" in p2:
-        dz = (p2["elevation"] - p1["elevation"]) / 1000  # meters → km
-
+    if "elevation" in p1 and "elevation" in p2:
+        dz = (p2["elevation"] - p1["elevation"]) / 1000
     return math.sqrt(dx**2 + dy**2 + dz**2)
 
+def drone_travel_time_minutes(distance_km: float, speed_kmph: float = config.DRONE_SPEED) -> float:
+    return round((distance_km / speed_kmph) * 60, 2)
 
-def drone_travel_time_minutes(distance_km, speed_kmph=config.Drone.SPEED_KMPH):
+async def ors_matrix(session: aiohttp.ClientSession, locations: list, retries: int = 3):
     """
-    Estimate drone travel time in minutes given distance (km) and drone speed.
+    Call ORS matrix API with retries + exponential backoff + jitter.
+    Returns a matrix (list of lists) or None on complete failure.
+    Partial/missing entries may exist (None).
     """
-    return (distance_km / speed_kmph) * 60
+    if not getattr(config, "ORS_API_KEY", None):
+        logger.warning("ORS_API_KEY not set; skipping ORS and using fallback distances.")
+        return None
 
-
-async def ors_matrix(session, locations, retries=3):
-    """
-    Query OpenRouteService API for a distance matrix with retry logic.
-    
-    Parameters:
-    - session: aiohttp.ClientSession
-    - locations: list of [lon, lat] coordinates
-    - retries: number of retry attempts for rate-limiting / network errors
-
-    Returns:
-    - distances matrix (nested list) or None on failure
-    """
     payload = {"locations": locations, "metrics": ["distance"]}
     headers = {"Authorization": config.ORS_API_KEY, "Content-Type": "application/json"}
-
-    for attempt in range(retries):
+    for attempt in range(1, retries + 1):
         try:
             timeout = aiohttp.ClientTimeout(total=60)
             async with session.post(ORS_API_URL, json=payload, headers=headers, timeout=timeout) as resp:
@@ -70,113 +44,90 @@ async def ors_matrix(session, locations, retries=3):
                 data = await resp.json()
                 return data.get("distances")
         except aiohttp.ClientResponseError as e:
-            # Retry if rate-limited (HTTP 429)
-            if e.status == 429 and attempt < retries - 1:
-                await asyncio.sleep(2 ** attempt)  # exponential backoff
+            # rate limit or server issues -> backoff and retry when appropriate
+            logger.warning("ORS ClientResponseError status=%s attempt=%d: %s", getattr(e, "status", None), attempt, e)
+            if getattr(e, "status", None) == 429 and attempt < retries:
+                backoff = (2 ** (attempt - 1)) + random.uniform(0, 1)
+                await asyncio.sleep(backoff)
                 continue
-            raise e
-        except asyncio.TimeoutError:
-            print("⚠️ ORS API request timed out")
+            # non-retriable HTTP error: break and return None
+            return None
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            logger.warning("ORS request error on attempt %d: %s", attempt, e)
+            if attempt < retries:
+                backoff = (2 ** (attempt - 1)) + random.uniform(0, 1)
+                await asyncio.sleep(backoff)
+                continue
+            return None
+        except Exception as e:
+            logger.exception("Unexpected error calling ORS: %s", e)
             return None
     return None
 
-
-async def compute_truck_chunk(session, coords_chunk, all_coords, start_index):
-    """
-    Compute truck distances for a chunk of origin coordinates using ORS.
-    
-    Parameters:
-    - session: aiohttp.ClientSession
-    - coords_chunk: sublist of origins (chunk)
-    - all_coords: full list of coordinates (origins + destinations)
-    - start_index: index of first origin in chunk
-    
-    Returns:
-    - truck_chunk: 2D list of distances (km), same order as coords_chunk vs all_coords
-    """
-    results = await ors_matrix(session, all_coords)  # Query ORS for full matrix
-    n = len(all_coords)
-    truck_chunk = [[None] * n for _ in range(len(coords_chunk))]
-
-    if results:
-        for i_local, i_global in enumerate(range(start_index, start_index + len(coords_chunk))):
-            for j in range(n):
-                if i_global == j:  # Skip self-distance
-                    continue
-                val = results[i_global][j]
-                if val is not None:
-                    truck_chunk[i_local][j] = round(val / 1000, 2)  # meters → km
-    return truck_chunk
-
-
-async def compute_distances(nodes):
-    """
-    Compute both drone (Euclidean) and truck (ORS) distances for all nodes.
-    
-    Parameters:
-    - nodes: list of dicts, each with keys 'node_id', 'lat', 'lon', optionally 'elevation'
-
-    Returns:
-    - dist_rows: list of [origin_id, dest_id, truck_km, truck_duration, drone_km, drone_duration]
-    """
+async def compute_distances(nodes: list):
     n = len(nodes)
-    print(f"Calculating distances for {n} nodes...")
+    depot_index = 0  # assuming first node is depot
 
-    # --- Drone distances (Euclidean) ---
-    drone_matrix = [[(0, 0)] * n for _ in range(n)]
+    # Drone matrix: (distance_km, duration_min)
+    drone_matrix = [[(None, None) for _ in range(n)] for _ in range(n)]
     for i in range(n):
         for j in range(n):
             if i == j:
                 continue
-            dist_km = euclidean_distance_km(nodes[i], nodes[j])
-            drone_matrix[i][j] = (round(dist_km, 2), round(drone_travel_time_minutes(dist_km), 2))
+            # Drone distance only if depot is involved
+            if i == depot_index or j == depot_index:
+                dist_km = round(euclidean_distance_km(nodes[i], nodes[j]), 2)
+                dur_min = drone_travel_time_minutes(dist_km)
+                drone_matrix[i][j] = (dist_km, dur_min)
 
-    # --- Truck distances (ORS API) ---
+    # Truck distances via ORS (with fallback)
     coords = [[node["lon"], node["lat"]] for node in nodes]
     truck_results = [[None] * n for _ in range(n)]
+    try:
+        async with aiohttp.ClientSession() as session:
+            results = await ors_matrix(session, coords)
+    except Exception as e:
+        logger.exception("Failed to call ORS matrix: %s", e)
+        results = None
 
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        # Split into chunks to respect ORS max 25x25 limit
-        for start in range(0, n, MAX_CHUNK_SIZE):
-            end = min(start + MAX_CHUNK_SIZE, n)
-            chunk_coords = coords[start:end]
-            tasks.append(compute_truck_chunk(session, chunk_coords, coords, start))
+    # If ORS returned a matrix, populate truck_results (may contain None entries)
+    if results:
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    val = results[i][j]
+                    if val is not None:
+                        truck_results[i][j] = round(val / 1000, 2)
 
-        chunks = await asyncio.gather(*tasks)  # Run all chunks concurrently
-        for i, chunk in enumerate(chunks):
-            start_index = i * MAX_CHUNK_SIZE
-            for row_idx, row in enumerate(chunk):
-                truck_results[start_index + row_idx] = row
+    # Fallback: for any missing truck entry, use Euclidean heuristic scaled for roads
+    ROAD_FACTOR = getattr(config, "ROAD_DISTANCE_FACTOR", 1.2)  # you can set this in config.py
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            if truck_results[i][j] is None:
+                # compute heuristic road distance from straight-line as a safe fallback
+                straight_km = round(euclidean_distance_km(nodes[i], nodes[j]), 2)
+                # if both points are depot <-> customer, keep straight; otherwise apply road factor
+                fallback_km = round(straight_km * ROAD_FACTOR, 2) if straight_km is not None else None
+                truck_results[i][j] = fallback_km
 
-    # --- Merge results into final matrix rows ---
+    # Merge distances and durations
     dist_rows = []
     for i in range(n):
         for j in range(n):
             if i == j:
                 continue
             truck_km = truck_results[i][j]
-            truck_dur = round((truck_km / config.TRUCK_SPEED) * 60, 2) if truck_km else None
+            truck_dur = round((truck_km / config.TRUCK_SPEED) * 60, 2) if truck_km is not None else None
             drone_km, drone_dur = drone_matrix[i][j]
             dist_rows.append([
-                nodes[i]["node_id"],  # DB-compatible origin ID
-                nodes[j]["node_id"],  # DB-compatible destination ID
-                truck_km,             # Truck distance in km
-                truck_dur,            # Truck duration in minutes
-                drone_km,             # Drone distance in km
-                drone_dur             # Drone duration in minutes
+                nodes[i]["node_id"],
+                nodes[j]["node_id"],
+                truck_km,
+                truck_dur,
+                drone_km,
+                drone_dur
             ])
-
-    print("Backend: all distances computed successfully.")
-
-    # --- Optional debug: write distances to CSV ---
-    os.makedirs("data", exist_ok=True)
-    csv_path = "data/distances_debug.csv"
-    with open(csv_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["origin_id", "dest_id", "truck_km", "truck_duration", "drone_km", "drone_duration"])
-        writer.writerows(dist_rows)
-
-    print(f"🔎 Debug CSV written: {csv_path}")
 
     return dist_rows

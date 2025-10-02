@@ -3,6 +3,7 @@ COMPLETE OPTIMIZED Main application window for India Airspace Management System
 Fixed route allocation, improved performance, and proper delivery point coverage
 CORRECTED VERSION - Clean integration with unified route manager
 """
+from platform import node
 import sys
 import os
 import json
@@ -27,7 +28,7 @@ from utils.backend_connector import (DEFAULT_DEPOT_COORDS, MAP_CENTER, MAP_ZOOM,
                                    DEFAULT_WAVES, PAUSE_BETWEEN_WAVES, VEHICLE_SPEEDS, VEHICLE_WEIGHTS)
 from core.data_manager import VehicleData, DataSimulator
 from core.api_handler import OptimizedRouteManager  # Use the corrected unified route manager
-from core.backend_fetcher import BackendDataFetcher
+
 from widgets.vehicle_control import VehicleControlPanel
 from widgets.delivery_info import DeliveryInfoWidget  
 from widgets.sound_monitoring import SoundGraphWidget, NoiseStatisticsWidget
@@ -36,17 +37,17 @@ from resources.map_templates import HTML_TEMPLATE
 from ui.dialog import DepotSelectionWindow
 
 
-
 class OptimizedRouteBuilder(QThread):
     """Background thread for building routes with improved allocation"""
     route_completed = pyqtSignal(str, list)  # vehicle_name, route
     progress_updated = pyqtSignal(int, str)  # progress, status
     all_routes_completed = pyqtSignal(dict)  # all_vehicles_dict
     
-    def __init__(self, depot_coords, delivery_assignments, parent=None):
+    def __init__(self, depot_coords, delivery_assignments, parent=None, preserve_backend_order=False):
         super().__init__(parent)
         self.depot_coords = depot_coords
         self.delivery_assignments = delivery_assignments
+        self.preserve_backend_order = preserve_backend_order  # ← ADD THIS
         self.vehicles = {}
         self.mutex = QMutex()
         
@@ -55,10 +56,15 @@ class OptimizedRouteBuilder(QThread):
         try:
             self.progress_updated.emit(10, "Initializing batch route builder...")
             
-            # Use the corrected unified route manager
-            route_results = OptimizedRouteManager.build_delivery_routes_batch(
-                self.depot_coords, self.delivery_assignments
-            )
+            # ✅ Check if we should preserve backend's route order
+            if self.preserve_backend_order:
+                print("Building routes with BACKEND'S OPTIMIZED ORDER...")
+                route_results = self._build_routes_preserving_order()
+            else:
+                print("Building routes with FRONTEND OPTIMIZATION...")
+                route_results = OptimizedRouteManager.build_delivery_routes_batch(
+                    self.depot_coords, self.delivery_assignments
+                )
             
             self.progress_updated.emit(70, "Processing route results...")
             
@@ -83,10 +89,14 @@ class OptimizedRouteBuilder(QThread):
                         "route_index": 0,
                         "speed": VEHICLE_SPEEDS[assignment["type"]],
                         "progress": 0.0,
-                        "weight": random.randint(*VEHICLE_WEIGHTS[assignment["type"]]),
-                        "volume": random.randint(10000, 80000),  # Add volume in cm³ (10-80 liters)
+                        "weight": assignment.get("total_weight", random.randint(*VEHICLE_WEIGHTS[assignment["type"]])),
+                        "volume": assignment.get("total_volume", random.randint(10000, 80000)),
                         "assigned_delivery": assignment["primary_delivery"],
-                        "all_deliveries": route_data.get("all_deliveries", [assignment["primary_delivery"]])
+                        "all_deliveries": route_data.get("all_deliveries", [assignment["primary_delivery"]]),
+                        "distance": assignment.get("distance", 0),
+                        "cost": assignment.get("cost", 0),
+                        "backend_weight": assignment.get("total_weight", 0),
+                        "backend_volume": assignment.get("total_volume", 0)
                     }
                 finally:
                     self.mutex.unlock()
@@ -101,6 +111,107 @@ class OptimizedRouteBuilder(QThread):
             print(f"Error in optimized route building: {e}")
             # Fallback to simple routes
             self._build_fallback_routes()
+            
+    def update_vehicle_metrics(self, vehicle_name, metrics):
+        """Update vehicle with backend metrics"""
+        # Find or create the vehicle status item
+        for i in range(self.status_list.count()):
+            item_widget = self.status_list.itemWidget(self.status_list.item(i))
+            if hasattr(item_widget, 'vehicle_name') and item_widget.vehicle_name == vehicle_name:
+                # Update the widget with metrics
+                if hasattr(item_widget, 'metrics_label'):
+                    metrics_text = (
+                        f"Distance: {metrics.get('distance', 0):.2f} km\n"
+                        f"Cost: ${metrics.get('cost', 0):.2f}\n"
+                        f"Weight: {metrics.get('total_weight', 0):.2f} kg\n"
+                        f"Volume: {metrics.get('total_volume', 0)/1000:.1f} L"
+                    )
+                    item_widget.metrics_label.setText(metrics_text)
+                break
+            
+    def _build_routes_preserving_order(self):
+        """Build routes preserving backend's node order, only fetching road geometry"""
+        from core.api_handler import OptimizedRouteManager
+        route_results = {}
+        total = len(self.delivery_assignments)
+        
+        for idx, (vehicle_name, assignment) in enumerate(self.delivery_assignments.items()):
+            if self.isInterruptionRequested():
+                return route_results
+            
+            progress = 10 + int((idx / total) * 60)
+            self.progress_updated.emit(progress, f"Building {vehicle_name} route...")
+            
+            deliveries = assignment['all_deliveries']  # Already in backend's order
+            vehicle_type = assignment['type']
+            
+            if vehicle_type == "Drone":
+                # Drones: straight line
+                route = [
+                    self.depot_coords[:],
+                    deliveries[0][:] if deliveries else self.depot_coords[:],
+                    self.depot_coords[:]
+                ]
+            else:
+                # Trucks: Get road waypoints in backend's exact order
+                route = self._get_road_route_preserving_order(deliveries)
+        
+            route_results[vehicle_name] = {
+                "route": route,
+                "all_deliveries": deliveries
+            }
+            print(f"✓ {vehicle_name}: {len(route)} waypoints, {len(deliveries)} deliveries (backend order)")
+    
+        return route_results
+
+    def _get_road_route_preserving_order(self, deliveries):
+        """Get road geometry following backend's exact delivery sequence"""
+        from core.api_handler import OptimizedRouteManager
+        import time
+        
+        route = [self.depot_coords[:]]
+        current_pos = self.depot_coords
+        
+        # Visit deliveries in EXACT backend order
+        for i, delivery in enumerate(deliveries):
+            try:
+                # Get OSRM road segment from current position to next delivery
+                segment = OptimizedRouteManager._get_osrm_route_fast(
+                    current_pos[0], current_pos[1],
+                    delivery[0], delivery[1]
+                )
+                
+                if segment and len(segment) >= 2:
+                    # Add segment points (skip first point as it's current position)
+                    route.extend(segment[1:])
+                else:
+                    # Fallback: add delivery point directly
+                    route.append(delivery[:])
+            
+                time.sleep(0.1)  # Rate limit OSRM calls
+                
+            except Exception as e:
+                print(f"OSRM failed for segment {i}, using direct line")
+                route.append(delivery[:])
+                
+            current_pos = delivery
+            
+        # Return to depot
+        try:
+            return_segment = OptimizedRouteManager._get_osrm_route_fast(
+                current_pos[0], current_pos[1],
+                self.depot_coords[0], self.depot_coords[1]
+            )
+            if return_segment and len(return_segment) >= 2:
+                route.extend(return_segment[1:])
+            else:
+                route.append(self.depot_coords[:])
+        except:
+            route.append(self.depot_coords[:])
+    
+        return route
+        
+        
     
     def _build_fallback_routes(self):
         """Fallback route building if batch processing fails"""
@@ -178,15 +289,20 @@ class IndiaAirspaceMap(QMainWindow):
         self.wave_start_time = 0.0
         self.vehicles_started = False
         self.vehicles_paused = False
-        
-        # Wave management
-        self.backend_waves = {}  # Store all waves from backend
-        self.current_wave_number = 1
-        self.max_waves = 1
+        self.wave_completed = False
+        self.auto_next_wave_timer = None
+        self.waiting_for_next_wave = False
         
         # Route building thread
         self.route_builder = None
         self.progress_dialog = None
+        
+         # Initialize empty - will be populated from backend
+        self.delivery_points = []
+        self.customer_nodes = []
+        self.depot_node = None
+        self.waves_data = []
+        self.initial_solution = None
         
         # Generate delivery points around selected depot based on customer count
         self.delivery_points = self.generate_delivery_points_around_depot()
@@ -227,6 +343,41 @@ class IndiaAirspaceMap(QMainWindow):
             return True
         except (RuntimeError, AttributeError):
             return False
+        
+    def load_initial_solution_from_file(self):
+        """Load initial_solution.json from backend folder"""
+        try:
+            # Get the correct path to backend folder
+            # Assuming structure: project_root/frontend/gui/main_window.py and project_root/backend/
+            current_file = os.path.abspath(__file__)
+            frontend_gui_dir = os.path.dirname(current_file)  # frontend/gui
+            frontend_dir = os.path.dirname(frontend_gui_dir)  # frontend
+            project_root = os.path.dirname(frontend_dir)  # project root
+            backend_folder = os.path.join(project_root, 'backend')
+            solution_file = os.path.join(backend_folder, 'initial_solution.json')
+            
+            print(f"Looking for initial_solution.json at: {solution_file}")
+            
+            if not os.path.exists(solution_file):
+                print(f"Initial solution file not found at: {solution_file}")
+                # Wait a bit longer in case backend is still writing
+                import time
+                time.sleep(2)
+                if not os.path.exists(solution_file):
+                    print("File still not found after waiting")
+                    return None
+            
+            with open(solution_file, 'r') as f:
+                solution = json.load(f)
+            
+            print(f"✅ Successfully loaded initial solution with {len(solution.get('summary', {}).get('wave_breakdown', {}))} waves")
+            return solution
+            
+        except Exception as e:
+            print(f"Error loading initial solution file: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def start_backend_processing(self):
         """Start backend processing asynchronously in a separate thread"""
@@ -235,94 +386,172 @@ class IndiaAirspaceMap(QMainWindow):
         class BackendProcessor(QThread):
             finished = pyqtSignal()
             error = pyqtSignal(str)
+            timeout_signal = pyqtSignal()
+
+            def __init__(self, parent):
+                super().__init__()
+                self.parent = parent
+                self.timeout_seconds = 30  # 30 second timeout
 
             def run(self):
                 try:
-                    # Create new event loop for this thread
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
-                    loop.run_until_complete(self.process_nodes_and_computations())
+
+                    # Run with timeout
+                    try:
+                        loop.run_until_complete(
+                            asyncio.wait_for(
+                                self.process_nodes_and_computations(),
+                                timeout=self.timeout_seconds
+                            )
+                        )
+                    except asyncio.TimeoutError:
+                        print(f"Backend processing timed out after {self.timeout_seconds} seconds")
+                        self.timeout_signal.emit()
+                        return
+                
                     loop.close()
                     self.finished.emit()
                 except Exception as e:
                     self.error.emit(str(e))
 
             async def process_nodes_and_computations(self):
-                """Async method to process nodes and trigger automatic backend computations"""
+                """Async method to process nodes and trigger backend computations"""
                 try:
-                    # Insert nodes to backend (this will automatically trigger computations)
-                    insert_success = await self.insert_nodes_to_backend()
+                    # Insert nodes to backend
+                    insert_success = await self.parent.insert_nodes_to_backend()
                     if not insert_success:
                         print("Node insertion and computation failed")
                         return
 
-                    print("Backend processing completed successfully (nodes inserted and computations triggered automatically)")
+                    print("✅ Backend processing completed successfully")
+            
+                    # Wait for backend to finish writing the file (increased wait time)
+                    await asyncio.sleep(3)
+            
+                    # Load the initial solution from the generated JSON file
+                    initial_solution = self.parent.load_initial_solution_from_file()
+                    if initial_solution:
+                        self.parent.initial_solution = initial_solution
+                        print(f"✅ Initial solution loaded with {len(initial_solution.get('summary', {}).get('wave_breakdown', {}))} waves")
+                
+                        # Parse wave information
+                        self.parent.parse_wave_information(initial_solution)
+                    else:
+                        print("⚠️ Could not load initial solution file")
 
                 except Exception as e:
                     print(f"❌ Error in backend processing: {e}")
-
-            async def insert_nodes_to_backend(self):
-                """Insert generated delivery points to backend database via API"""
-                if not hasattr(self.parent, 'customer_nodes') or not self.parent.customer_nodes:
-                    print("No customer nodes to insert")
-                    return False
-
-                try:
-                    # Prepare nodes data for backend API
-                    nodes_data = []
-                    for node in self.parent.customer_nodes:
-                        nodes_data.append({
-                            "node_id": node["node_id"],
-                            "weight": node["weight"],
-                            "volume": node["volume"],
-                            "lon": node["lon"],
-                            "lat": node["lat"]
-                        })
-
-                    # Add depot node
-                    if hasattr(self.parent, 'depot_node'):
-                        nodes_data.insert(0, {
-                            "node_id": self.parent.depot_node["node_id"],
-                            "weight": self.parent.depot_node["weight"],
-                            "volume": self.parent.depot_node["volume"],
-                            "lon": self.parent.depot_node["lon"],
-                            "lat": self.parent.depot_node["lat"]
-                        })
-
-                    print(f"Inserting {len(nodes_data)} nodes to backend database...")
-
-                    # Insert nodes via backend API
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            "http://127.0.0.1:8000/api/nodes/insert",
-                            json=nodes_data,
-                            headers={"Content-Type": "application/json"}
-                        ) as response:
-                            if response.status == 200:
-                                result = await response.json()
-                                print(f"Successfully inserted {result.get('inserted', 0)} nodes to backend")
-                                return True
-                            else:
-                                error_text = await response.text()
-                                print(f"Failed to insert nodes: {response.status} - {error_text}")
-                                return False
-
-                except aiohttp.ClientError as e:
-                    print(f"Network error inserting nodes: {e}")
-                    return False
-                except Exception as e:
-                    print(f"Error inserting nodes: {e}")
-                    return False
-
-
-
+                    import traceback
+                    traceback.print_exc()
+        
         # Create and start the processor thread
-        self.backend_processor = BackendProcessor()
-        self.backend_processor.parent = self  # Pass reference to parent
-        self.backend_processor.finished.connect(lambda: print("Backend processing thread finished"))
-        self.backend_processor.error.connect(lambda err: print(f"Backend processing error: {err}"))
+        self.backend_processor = BackendProcessor(self)
+        self.backend_processor.finished.connect(lambda: print("✅ Backend processing thread finished"))
+        self.backend_processor.error.connect(lambda err: print(f"❌ Backend processing error: {err}"))
+        self.backend_processor.timeout_signal.connect(
+            lambda: QMessageBox.warning(
+                self,
+                "Backend Timeout",
+                "Backend processing timed out. You can still use the system with default routing."
+            )
+        )
         self.backend_processor.start()
+        
+    def parse_wave_information(self, initial_solution):
+        """Parse wave information from backend's initial solution"""
+        try:
+            self.waves_data = []
+
+            # Filter out the 'summary' key - only process actual wave keys
+            for wave_key, wave_data in initial_solution.items():
+                # Skip the summary key
+                if wave_key == 'summary':
+                    continue
+
+                wave_info = {
+                    'wave_number': wave_key,
+                    'drones': wave_data.get('drones', []),
+                    'trucks': wave_data.get('trucks', []),
+                    'total_drones': len(wave_data.get('drones', [])),
+                    'total_trucks': len(wave_data.get('trucks', []))
+                }
+                self.waves_data.append(wave_info)
+
+            print(f"✅ Parsed {len(self.waves_data)} actual waves from backend solution")
+            for wave in self.waves_data:
+                print(f"  {wave['wave_number']}: {wave['total_drones']} drones, {wave['total_trucks']} trucks")
+
+            self.update_wave_info_ui()
+
+        except Exception as e:
+            print(f"Error parsing wave information: {e}")
+            import traceback
+            traceback.print_exc()
+    def update_wave_info_ui(self):
+        """Update UI to display wave information from backend"""
+        if not hasattr(self, 'waves_data') or not self.waves_data:
+            return
+
+        try:
+            total_vehicles_in_waves = sum(w['total_drones'] + w['total_trucks'] for w in self.waves_data)
+            wave_summary = f"Waves: {len(self.waves_data)} | Total: {total_vehicles_in_waves} vehicles"
+
+            if hasattr(self, 'statusBar') and not self._widgets_destroyed:
+                current_status = self.statusBar().currentMessage()
+                self.statusBar().showMessage(f"{current_status} | {wave_summary}")
+
+            print(f"UI updated with {len(self.waves_data)} waves")
+
+        except Exception as e:
+            print(f"Error updating wave info UI: {e}")
     
+    def process_backend_nodes(self, nodes_data):
+        """Process nodes fetched from backend and set up delivery points"""
+        try:
+            self.customer_nodes = []
+            self.delivery_points = []
+
+            for node in nodes_data:
+                if node.get('node_id') == 'depot':
+                    # Update depot coordinates from backend
+                    self.depot_node = {
+                        "node_id": "depot",
+                        "type": "depot",
+                        "weight": node.get('weight', 0),
+                        "volume": node.get('volume', 0),
+                        "lon": node['lon'],
+                        "lat": node['lat'],
+                        "coords": [node['lat'], node['lon']]
+                    }
+                    self.depot_coords = [node['lat'], node['lon']]
+                else:
+                    # Customer node
+                    customer_node = {
+                        "node_id": node['node_id'],
+                        "type": "customer",
+                        "weight": node.get('weight', 0),
+                        "volume": node.get('volume', 0),
+                        "lon": node['lon'],
+                        "lat": node['lat'],
+                        "coords": [node['lat'], node['lon']]
+                    }
+                    self.customer_nodes.append(customer_node)
+                    self.delivery_points.append([node['lat'], node['lon']])
+
+            print(f"Processed {len(self.customer_nodes)} customer nodes from backend")
+            print(f"Depot at: {self.depot_coords}")
+
+            # Update UI with backend data
+            self.update_depot_and_fleet_ui()
+
+            # Reinitialize map with backend nodes
+            if self.map_ready:
+                self.reinitialize_map_optimized()
+
+        except Exception as e:
+            print(f"Error processing backend nodes: {e}")
     def _safe_widget_operation(self, widget, operation, *args, **kwargs):
         """Safely perform operations on widgets with error handling"""
         try:
@@ -339,68 +568,112 @@ class IndiaAirspaceMap(QMainWindow):
         return self._safe_widget_operation(widget, widget.setText, str(text))
     
     def generate_delivery_points_around_depot(self):
-        """Generate delivery points with improved distribution"""
+        """Generate delivery points with inner/outer circle split, ensuring drone eligibility for inner circle."""
         points = []
         depot_lat, depot_lon = self.depot_coords
-    
-        # First, add the depot node
+
+        # Depot node
         depot_node = {
-            "node_id": "depot",             # Unique ID
-            "type": "depot",                # Node type (used in routing logic)
-            "weight": 0,                    # Depot has no demand
-            "volume": 0,                    # Depot has no demand
-            "lon": depot_lon,               # Longitude from depot coords
-            "lat": depot_lat,               # Latitude from depot coords
-            "coords": [depot_lat, depot_lon]  # Keep original coords format for compatibility
+            "node_id": "depot",
+            "type": "depot",
+            "weight": 0,
+            "volume": 0,  # in cm³
+            "lon": round(depot_lon, 6),
+            "lat": round(depot_lat, 6),
+            "coords": [round(depot_lat, 6), round(depot_lon, 6)]
         }
-    
-        # Create points in concentric circles for better coverage
-        circles = min(5, max(1, self.customer_count // 15))  # Better circle calculation
-        points_per_circle = self.customer_count // circles
-        remaining_points = self.customer_count % circles
-    
-        for circle in range(circles):
-            circle_points = points_per_circle + (1 if circle < remaining_points else 0)
-            base_distance = 10 + (circle * 15)  # 10km, 25km, 40km, etc.
-        
-            for i in range(circle_points):
-                # Better angle distribution to avoid clustering
-                angle = (i * (360 / max(1, circle_points))) + random.uniform(-8, 8)
-                distance_km = base_distance + random.uniform(-2, 10)
+
+        # Drone limits
+        drone_max_weight = 5.0      # kg
+        drone_max_volume = 20000    # cm³
+
+        # Split nodes 20% inner / 80% outer
+        inner_count = max(1, int(self.customer_count * 0.1))
+        outer_count = self.customer_count - inner_count
+
+        # ---------------- Inner circle (0.5–5 km) → must be drone-eligible ----------------
+        for i in range(inner_count):
+            angle = random.uniform(0, 360)
+            distance_km = random.uniform(0.5, 5.0)
+
+            lat_offset = (distance_km / 111.32) * math.cos(math.radians(angle))
+            lon_offset = (distance_km / (111.32 * math.cos(math.radians(depot_lat)))) * math.sin(math.radians(angle))
+
+            weight = round(random.uniform(0.5, drone_max_weight), 2)
+            volume = random.randint(500, drone_max_volume)
+
+            points.append({
+                "node_id": f"cust_{len(points) + 1}",
+                "type": "customer",
+                "weight": weight,
+                "volume": volume,
+                "lon": round(depot_lon + lon_offset, 6),
+                "lat": round(depot_lat + lat_offset, 6),
+                "coords": [round(depot_lat + lat_offset, 6), round(depot_lon + lon_offset, 6)]
+            })
+
+        # ---------------- Outer circle (3–60 km) → drone or truck eligible ----------------
+        for i in range(outer_count):
+            angle = random.uniform(0, 360)
+            distance_km = random.uniform(3.0, 60.0)
+
+            lat_offset = (distance_km / 111.32) * math.cos(math.radians(angle))
+            lon_offset = (distance_km / (111.32 * math.cos(math.radians(depot_lat)))) * math.sin(math.radians(angle))
+
+            if random.random() < 0.15:  # 15% chance → drone-eligible even if far
+                weight = round(random.uniform(0.5, drone_max_weight), 2)
+                volume = random.randint(500, drone_max_volume)
+                eligible = "drone"
+            else:
+                weight = round(random.uniform(100, 1000), 2)  # strictly truck
+                volume = random.randint(200000, 5400000)
+                eligible = "truck"
+            points.append({
+                "node_id": f"cust_{len(points) + 1}",
+                "type": "customer",
+                "weight": weight,
+                "volume": volume,
+                "lon": round(depot_lon + lon_offset, 6),
+                "lat": round(depot_lat + lat_offset, 6),
+                "coords": [round(depot_lat + lat_offset, 6), round(depot_lon + lon_offset, 6)],
+                "eligible": "truck"  # ✅ explicitly mark
+            })
             
-                # Convert to lat/lon offset
-                lat_offset = (distance_km / 111.32) * math.cos(math.radians(angle))
-                lon_offset = (distance_km / (111.32 * math.cos(math.radians(depot_lat)))) * math.sin(math.radians(angle))
-            
-                point_lat = depot_lat + lat_offset
-                point_lon = depot_lon + lon_offset
-            
-                # Generate volume for customer (using normal distribution)
-                volume = max(1000, random.normalvariate(50000, 20000))  # Volume in cm³, minimum 1000
-            
-                # Create customer node
-                customer_node = {
-                    "node_id": f"cust_{len(points) + 1}",      # Unique ID (cust_1, cust_2, ...)
-                    "type": "customer",                        # Node type
-                    "weight": random.uniform(1.0, 5.0),       # Customer weight in kg
-                    "volume": round(volume, 0),                # Volume in cm³, rounded
-                    "lon": point_lon,                          # Longitude
-                    "lat": point_lat,                          # Latitude
-                    "coords": [point_lat, point_lon]           # Keep original coords format for compatibility
-                }
-            
-                points.append(customer_node)
+        # DON'T shuffle - backend needs consistent node ordering!
+        # Sort by node_id to ensure consistent ordering
+        points.sort(key=lambda x: int(x['node_id'].replace('cust_', '')))
+
+        # Count drone-eligible inner circle
+        drone_eligible_count = sum(
+            1 for p in points
+            if p["weight"] <= drone_max_weight and p["volume"] <= drone_max_volume
+            and math.sqrt((p["lat"] - depot_lat)**2 + (p["lon"] - depot_lon)**2) * 111.32 <= 5
+        )
+        print(f"✅ Inner circle drone-eligible: {drone_eligible_count}/{inner_count}")
+
+        # Store nodes
+        self.depot_node = depot_node
+        self.customer_nodes = points
+
+        # Return coordinates for convenience
+        return [p["coords"] for p in points]
     
-    # Shuffle for random assignment
-        random.shuffle(points)
-    
-    # Return list that includes depot + customer points, but maintain original format for backwards compatibility
-    # The function originally returned just coordinate lists, so we'll return the coords but store the full data
-        self.depot_node = depot_node  # Store depot data as instance variable
-        self.customer_nodes = points  # Store customer data as instance variables
-    
-    # Return coordinate lists for backward compatibility
-        return [point["coords"] for point in points]
+    async def fetch_nodes_from_backend(self):
+        """Fetch generated nodes from backend database"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://127.0.0.1:8000/api/nodes") as response:
+                    if response.status == 200:
+                        nodes_data = await response.json()
+                        print(f"Fetched {len(nodes_data)} nodes from backend")
+                        return nodes_data
+                    else:
+                        error_text = await response.text()
+                        print(f"Failed to fetch nodes: {response.status} - {error_text}")
+                        return []
+        except Exception as e:
+            print(f"Error fetching nodes: {e}")
+            return []
 
     async def insert_nodes_to_backend(self):
         """Insert generated delivery points to backend database via API"""
@@ -410,9 +683,9 @@ class IndiaAirspaceMap(QMainWindow):
 
         try:
             # Prepare nodes data for backend API
-            nodes_data = []
+            nodes_list = []
             for node in self.customer_nodes:
-                nodes_data.append({
+                nodes_list.append({
                     "node_id": node["node_id"],
                     "weight": node["weight"],
                     "volume": node["volume"],
@@ -422,7 +695,7 @@ class IndiaAirspaceMap(QMainWindow):
 
             # Add depot node
             if hasattr(self, 'depot_node'):
-                nodes_data.insert(0, {
+                nodes_list.insert(0, {
                     "node_id": self.depot_node["node_id"],
                     "weight": self.depot_node["weight"],
                     "volume": self.depot_node["volume"],
@@ -430,7 +703,17 @@ class IndiaAirspaceMap(QMainWindow):
                     "lat": self.depot_node["lat"]
                 })
 
-            print(f"Inserting {len(nodes_data)} nodes to backend database...")
+            # Prepare the request data as expected by backend
+            nodes_data = {
+                "nodes": nodes_list,
+                "vehicle_config": {
+                    "electric_trucks": self.electric_trucks,
+                    "fuel_trucks": self.fuel_trucks,
+                    "drones": self.drones
+                }
+            }
+
+            print(f"Inserting {len(nodes_list)} nodes to backend database...")
 
             # Insert nodes via backend API
             async with aiohttp.ClientSession() as session:
@@ -441,7 +724,7 @@ class IndiaAirspaceMap(QMainWindow):
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
-                        print(f"Successfully inserted {result.get('inserted', 0)} nodes to backend")
+                        print(f"Successfully inserted {result.get('nodes_inserted', 0)} nodes to backend")
                         return True
                     else:
                         error_text = await response.text()
@@ -490,106 +773,92 @@ class IndiaAirspaceMap(QMainWindow):
             return False
 
     async def process_nodes_and_computations(self):
-        """Process node insertion and backend computations"""
+        """Process node insertion (computations are handled automatically by /api/nodes/insert)"""
         try:
-            # Insert nodes to backend
+            # Insert nodes to backend (this automatically triggers computations)
             insert_success = await self.insert_nodes_to_backend()
-            if not insert_success:
-                print("Node insertion failed, skipping computations")
-                return False
-
-            # Trigger backend computations
-            compute_success = await self.trigger_backend_computations()
-            if compute_success:
+            if insert_success:
                 print("✅ Backend processing completed successfully")
                 return True
             else:
-                print("Backend computations failed")
+                print("Node insertion failed")
                 return False
 
         except Exception as e:
             print(f"❌ Error in backend processing: {e}")
             return False
     
-    async def fetch_backend_assignments(self):
-        """Fetch wave assignments from backend instead of generating locally"""
-        print("\n=== FETCHING BACKEND WAVE ASSIGNMENTS ===")
-        
-        fetcher = BackendDataFetcher()
-        wave_data = await fetcher.fetch_wave_assignments(timeout=30, retry_count=3)
-    
-        if not wave_data:
-            print("❌ Failed to fetch backend data, falling back to local generation")
-            return self.create_optimal_delivery_assignments()
-        
-        # Parse wave data
-        self.backend_waves = fetcher.parse_wave_data(wave_data)
-        print(f"✅ Loaded {len(self.backend_waves)} waves from backend")
-        
-        # Store max waves for wave cycling
-        self.max_waves = len(self.backend_waves)
-        self.current_wave_number = 1
-        
-        # Convert first wave to delivery assignments format
-        assignments = self.convert_wave_to_assignments(self.backend_waves.get("wave_1", []))
-        
-        if not assignments:
-            print("❌ No valid assignments in wave_1, falling back to local generation")
-            return self.create_optimal_delivery_assignments()
-    
-        return assignments
-        
     def create_optimal_delivery_assignments(self):
-        """Fallback method to create assignments when backend is unavailable"""
-        print("Creating fallback assignments locally...")
+        """Create delivery assignments ensuring ALL points are covered with multi-delivery support"""
+        total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+        delivery_points = self.delivery_points[:]
         
-        # Use the ImprovedDeliveryAssigner class
-        return ImprovedDeliveryAssigner.create_complete_assignments(
-            self.delivery_points,
-            self.electric_trucks,
-            self.fuel_trucks,
-            self.drones
-        )
-    
-    def convert_wave_to_assignments(self, wave_vehicles: List[Dict]) -> Dict:
-        """Convert backend wave format to frontend assignment format"""
+        print(f"\n=== OPTIMIZED DELIVERY ALLOCATION ===")
+        print(f"Delivery points: {len(delivery_points)}")
+        print(f"Total vehicles: {total_vehicles}")
+        print(f"Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D")
+        
+        if total_vehicles == 0:
+            print("ERROR: No vehicles configured!")
+            return {}
+        
         assignments = {}
         
-        for vehicle in wave_vehicles:
-            vehicle_name = vehicle["vehicle_id"].replace("_", " ")
+        # Create all vehicles with their types
+        all_vehicles = []
+        for i in range(self.drones):
+            all_vehicles.append(("Drone", i + 1))
+        for i in range(self.electric_trucks):
+            all_vehicles.append(("Electric Truck", i + 1))
+        for i in range(self.fuel_trucks):
+            all_vehicles.append(("Fuel Truck", i + 1))
         
-            # Get delivery coordinates from node_ids
-            deliveries = []
-            for node_id in vehicle["node_ids"]:
-                # Find node coordinates from generated nodes
-                node_coord = self.get_node_coordinates(node_id)
-                if node_coord:
-                    deliveries.append(node_coord)
-                    
-            if deliveries:
+        # Calculate deliveries per vehicle
+        deliveries_per_vehicle = math.ceil(len(delivery_points) / total_vehicles)
+        print(f"Strategy: Each vehicle will handle up to {deliveries_per_vehicle} delivery points")
+        
+        # Distribute ALL delivery points to vehicles using round-robin
+        for i, delivery_point in enumerate(delivery_points):
+            vehicle_index = i % total_vehicles
+            vehicle_type, vehicle_num = all_vehicles[vehicle_index]
+            vehicle_name = f"{vehicle_type} {vehicle_num}"
+            
+            if vehicle_name not in assignments:
+                # First delivery point for this vehicle (primary delivery)
                 assignments[vehicle_name] = {
-                    "type": vehicle["type"],
-                    "primary_delivery": deliveries[0][:],
-                    "all_deliveries": deliveries,
-                    "backend_route": vehicle["route"],  # Store backend route info
-                    "distance": vehicle["distance"],
-                    "cost": vehicle["cost"]
-            }
-        print(f"Converted {len(assignments)} vehicles from backend wave")
+                    "type": vehicle_type,
+                    "primary_delivery": delivery_point[:],  # Primary delivery for route building
+                    "all_deliveries": [delivery_point[:]]   # List of all deliveries for this vehicle
+                }
+            else:
+                # Additional delivery points for this vehicle
+                assignments[vehicle_name]["all_deliveries"].append(delivery_point[:])
+        
+        # Verify complete coverage
+        total_assigned_points = sum(len(assignment["all_deliveries"]) for assignment in assignments.values())
+        unique_assigned_points = set()
+        for assignment in assignments.values():
+            for delivery in assignment["all_deliveries"]:
+                unique_assigned_points.add(tuple(delivery))
+        
+        print(f"Final assignment results:")
+        print(f"- Created vehicles: {len(assignments)}")
+        print(f"- Total delivery assignments: {total_assigned_points}")
+        print(f"- Unique delivery points covered: {len(unique_assigned_points)}")
+        print(f"- Original delivery points: {len(delivery_points)}")
+        
+        # Detailed breakdown
+        for vehicle_name, assignment in assignments.items():
+            deliveries_count = len(assignment["all_deliveries"])
+            print(f"  {vehicle_name}: {deliveries_count} deliveries")
+        
+        if len(unique_assigned_points) == len(delivery_points):
+            print("✅ SUCCESS: All delivery points have been assigned!")
+        else:
+            missing_points = len(delivery_points) - len(unique_assigned_points)
+            print(f"⚠️  WARNING: {missing_points} points might have assignment issues!")
+        
         return assignments
-    
-    def get_node_coordinates(self, node_id: str) -> Optional[List[float]]:
-        """Get coordinates for a node_id from customer_nodes or depot"""
-        if node_id == "depot":
-            return self.depot_coords[:]
-
-        # Search in customer nodes
-        if hasattr(self, 'customer_nodes'):
-            for node in self.customer_nodes:
-                if node["node_id"] == node_id:
-                    return node["coords"][:]
-    
-        return None
     
     def setup_ui(self):
         """Setup UI with sidebar layout"""
@@ -690,18 +959,18 @@ class IndiaAirspaceMap(QMainWindow):
             self.start_stop_action.setCheckable(True)
             self.start_stop_action.triggered.connect(self.toggle_start_stop_vehicles)
             toolbar.addAction(self.start_stop_action)
-            
+
+            # Next Wave button (hidden initially)
+            self.next_wave_action = QAction("⏭ Next Wave", self)
+            self.next_wave_action.triggered.connect(self.start_next_wave)
+            self.next_wave_action.setVisible(False)
+            toolbar.addAction(self.next_wave_action)
+
             # Restart vehicles button
             self.restart_action = QAction("🔄 Restart from Beginning", self)
             self.restart_action.triggered.connect(self.restart_vehicles)
             self.restart_action.setVisible(False)
             toolbar.addAction(self.restart_action)
-            
-            # ADD THIS NEW BUTTON HERE:
-            self.next_wave_action = QAction("⏭ Next Wave", self)
-            self.next_wave_action.triggered.connect(self.start_next_wave)
-            self.next_wave_action.setVisible(False)  # Show only when wave completes
-            toolbar.addAction(self.next_wave_action)
             
             # Map view
             self.map_view = QWebEngineView()
@@ -783,53 +1052,189 @@ class IndiaAirspaceMap(QMainWindow):
             self.pause_vehicles()
             self.start_stop_action.setText("▶ Resume Vehicles")
             self.start_stop_action.setToolTip("Click to resume vehicle simulation")
+            
+    def create_assignments_from_waves(self):
+        """Create vehicle assignments from backend's wave solution"""
+        if not hasattr(self, 'waves_data') or not self.waves_data:
+            print("⚠️ No wave data available, using fallback assignment method")
+            return self.create_optimal_delivery_assignments()
+        
+        # Use only the FIRST actual wave for now
+        current_wave = self.waves_data[0] if self.waves_data else None
+        if not current_wave:
+            print("⚠️ No valid wave found, using fallback")
+            return self.create_optimal_delivery_assignments()
+        
+        print(f"\n=== USING BACKEND WAVE SOLUTION ===")
+        print(f"Wave: {current_wave['wave_number']}")
+        print(f"Drones: {current_wave['total_drones']}, Trucks: {current_wave['total_trucks']}")
+        
+        assignments = {}
+        
+        # Process drones from backend solution
+        for idx, drone in enumerate(current_wave['drones']):
+            vehicle_name = f"Drone {idx + 1}"
+            node_ids = drone.get('node_ids', [])  # Changed from 'route' to 'node_ids'
+            
+            deliveries = []
+            for node_id in node_ids:
+                 # Skip depot nodes in the list
+                if node_id == 'depot':
+                    continue
+            
+                # Find the node coordinates
+                found = False
+                for node in self.customer_nodes:
+                    if node['node_id'] == node_id:
+                        deliveries.append(node['coords'])
+                        print(f"   ✓ Found {node_id} at coords: {node['coords']}")  # ← ADD THIS
+                        found = True
+                        break
+                
+                if not found:
+                    print(f"   ❌ ERROR: Could not find {node_id} in customer_nodes!")  # ← ADD THIS
+            
+            if deliveries:
+                assignments[vehicle_name] = {
+                    "type": "Drone",
+                    "primary_delivery": deliveries[0],
+                    "all_deliveries": deliveries,
+                    "distance": drone.get('distance', 0),  # Add backend distance
+                    "cost": drone.get('cost', 0),  # Add backend cost
+                    "total_weight": drone.get('total_weight', 0),  # Add backend weight
+                    "total_volume": drone.get('total_volume', 0)  # Add backend volume
+                }
+                print(f"  {vehicle_name}: {len(deliveries)} deliveries | "
+                    f"Distance: {drone.get('distance', 0):.2f} km | "
+                    f"Cost: ${drone.get('cost', 0):.2f} | "
+                    f"Weight: {drone.get('total_weight', 0):.2f} kg")
+        
+        # Process trucks from backend solution
+        for truck in current_wave['trucks']:
+            vehicle_id = truck['vehicle_id']
+            # Extract vehicle type from ID (E_Truck_1, F_Truck_1, etc.)
+            if 'E_Truck' in vehicle_id:
+                vehicle_type = "Electric Truck"
+                truck_num = vehicle_id.split('_')[-1]
+                vehicle_name = f"Electric Truck {truck_num}"
+            elif 'F_Truck' in vehicle_id:
+                vehicle_type = "Fuel Truck"
+                truck_num = vehicle_id.split('_')[-1]
+                vehicle_name = f"Fuel Truck {truck_num}"
+            else:
+                continue
+            
+            node_ids = truck.get('node_ids', [])  # Changed from 'route' to 'node_ids'
+            
+            deliveries = []
+            for node_id in node_ids:
+                # Skip depot nodes in the list
+                if node_id == 'depot':
+                    continue
+                # Find the node coordinates
+                for node in self.customer_nodes:
+                    if node['node_id'] == node_id:
+                        deliveries.append(node['coords'])
+                        break
+            
+            if deliveries:
+                assignments[vehicle_name] = {
+                    "type": vehicle_type,
+                    "primary_delivery": deliveries[0],
+                    "all_deliveries": deliveries,
+                    "distance": truck.get('distance', 0),
+                    "cost": truck.get('cost', 0),
+                    "total_weight": truck.get('total_weight', 0),
+                    "total_volume": truck.get('total_volume', 0),
+                    "capacity_utilization": truck.get('capacity_utilization', {})
+                }
+                print(f"  {vehicle_name}: {len(deliveries)} deliveries | "
+                f"Distance: {truck.get('distance', 0):.2f} km | "
+                f"Cost: ${truck.get('cost', 0):.2f} | "
+                f"Weight: {truck.get('total_weight', 0):.2f} kg")
+        
+        total_vehicles = len(assignments)
+        total_deliveries = sum(len(a['all_deliveries']) for a in assignments.values())
+        
+        print(f"✅ Created {total_vehicles} vehicle assignments from backend")
+        print(f"📦 Total deliveries assigned: {total_deliveries}")
+        
+        return assignments
     
     def start_vehicles_optimized(self):
-        """Start vehicles with backend wave data"""
+        """Start vehicles with optimized route building"""
         if self._widgets_destroyed or self._shutdown_in_progress:
             return False
-        
+
         if not self.map_ready:
             QMessageBox.warning(self, "Map Not Ready", "Please wait for the map to finish loading.")
             return False
-        
+
         if not self.vehicles_started:
-            # Fetch assignments from backend
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            delivery_assignments = loop.run_until_complete(self.fetch_backend_assignments())
-            loop.close()
-            
-            if not delivery_assignments:
-                QMessageBox.warning(self, "No Assignments", "Failed to get assignments from backend.")
+            # Wait for backend processing if still in progress
+            if hasattr(self, 'backend_processor') and self.backend_processor.isRunning():
+                QMessageBox.information(
+                    self,
+                    "Backend Processing",
+                    "Backend is still computing optimal routes. Please wait a few seconds and try again."
+                )
                 return False
-        
-            # Show progress dialog
+            
+            # CRITICAL: Use backend wave solution if available
+            if hasattr(self, 'waves_data') and self.waves_data:
+                print(f"\n=== USING BACKEND WAVE SOLUTION ===")
+                delivery_assignments = self.create_assignments_from_waves()
+                use_backend_routes = True  # ← ADD THIS FLAG
+            else:
+                print(f"\n=== FALLBACK: Using frontend assignment ===")
+                delivery_assignments = self.create_optimal_delivery_assignments()
+                use_backend_routes = False
+
+            if not delivery_assignments:
+                QMessageBox.warning(self, "No Assignments", "No delivery assignments could be created.")
+                return False
+
+            # Verify assignments
+            total_assigned = sum(len(assignment["all_deliveries"]) for assignment in delivery_assignments.values())
+            print(f"Total vehicles: {len(delivery_assignments)}")
+            print(f"Total deliveries: {total_assigned}")
+
+            # Thread-safe progress dialog creation
+            # Create progress dialog - NON-BLOCKING
             self._progress_mutex.lock()
             try:
                 if self.progress_dialog is None:
                     self.progress_dialog = QProgressDialog(
-                        "Building routes from backend data...", "Cancel", 0, 100, self
+                        "Building optimized routes...", 
+                        "Cancel", 
+                        0, 100, 
+                        self
                     )
-                    self.progress_dialog.setWindowTitle("Loading Backend Routes")
-                    self.progress_dialog.setModal(True)
+                    self.progress_dialog.setWindowTitle("Optimizing Fleet Routes")
+                    self.progress_dialog.setWindowModality(Qt.NonModal)  # ← KEY: Non-blocking
+                    self.progress_dialog.setMinimumDuration(0)
                     self.progress_dialog.show()
+                    
+                    # Force UI update
+                    from PyQt5.QtWidgets import QApplication
+                    QApplication.processEvents()
             finally:
                 self._progress_mutex.unlock()
-            
-            # Build routes using backend assignments
-            self.route_builder = OptimizedRouteBuilder(self.depot_coords, delivery_assignments, self)
+
+            # Start background route building
+            self.route_builder = OptimizedRouteBuilder(self.depot_coords, delivery_assignments, self,preserve_backend_order=use_backend_routes )
             self.route_builder.progress_updated.connect(self.on_route_progress)
             self.route_builder.all_routes_completed.connect(self.on_routes_completed)
             self.route_builder.start()
-        
+
             self.vehicles_started = True
             self.vehicles_paused = False
+
         else:
-            # Resume
+            # Resume paused vehicles
             self.vehicles_paused = False
             self.update_all_vehicle_statuses("Moving")
-    
+
         return True
     
     def on_route_progress(self, progress, status):
@@ -862,148 +1267,68 @@ class IndiaAirspaceMap(QMainWindow):
         """Handle completion of route building"""
         if self._widgets_destroyed or self._shutdown_in_progress:
             return
-        
-        # Clean up progress dialog
-        self._cleanup_progress_dialog()
-        
+
+        print("🎉 Routes completed! Cleaning up dialog...")
+
+        # FORCE close progress dialog immediately - don't wait
+        self._progress_mutex.lock()
+        try:
+            if self.progress_dialog is not None:
+                self.progress_dialog.setValue(100)  # Set to 100% first
+                self.progress_dialog.close()
+                self.progress_dialog.deleteLater()  # Force deletion
+                self.progress_dialog = None
+                print("✅ Progress dialog force-closed")
+        except Exception as e:
+            print(f"Dialog cleanup error: {e}")
+            self.progress_dialog = None
+        finally:
+            self._progress_mutex.unlock()
+
+        # Process events to ensure dialog closes
+        from PyQt5.QtWidgets import QApplication
+        QApplication.processEvents()
+
         # Store vehicles and start simulation
         self.vehicles = vehicles_dict
         self.wave_running = True
         self.wave_start_time = time.time()
-        
+
         # Update UI
         self.update_all_vehicle_statuses("Moving")
-        
-        # Send to map in batches for better performance
+
+        # Send to map in batches
         self.send_vehicles_to_js_batch()
-        
-        # Calculate actual coverage
+
+        # Calculate coverage
         total_unique_deliveries = set()
         total_delivery_assignments = 0
-        
+
         for vehicle_name, vehicle_data in self.vehicles.items():
-            # Count all deliveries assigned to this vehicle
             all_deliveries = vehicle_data.get("all_deliveries", [vehicle_data["assigned_delivery"]])
             total_delivery_assignments += len(all_deliveries)
-            
-            # Add to unique set
             for delivery in all_deliveries:
                 total_unique_deliveries.add(tuple(delivery))
-        
+
         print(f"✅ Fleet optimization completed!")
         print(f"Created {len(self.vehicles)} vehicles")
         print(f"Total delivery assignments: {total_delivery_assignments}")
         print(f"Unique delivery points covered: {len(total_unique_deliveries)}/{len(self.delivery_points)}")
-        
+
+        # Show success message
         try:
             coverage_percentage = (len(total_unique_deliveries) / len(self.delivery_points)) * 100
             QMessageBox.information(
                 self,
                 "Fleet Optimized",
                 f"Fleet optimization completed!\n\n"
-                f"• Created: {len(self.vehicles)} vehicles\n"
-                f"• Delivery assignments: {total_delivery_assignments}\n"
-                f"• Unique points covered: {len(total_unique_deliveries)}/{len(self.delivery_points)} ({coverage_percentage:.1f}%)\n"
-                f"• Route building time: {time.time() - self.wave_start_time:.1f} seconds\n\n"
-                f"Note: Vehicles will handle multiple delivery points through optimized multi-stop routing."
+                f"• Vehicles: {len(self.vehicles)}\n"
+                f"• Deliveries: {total_delivery_assignments}\n"
+                f"• Coverage: {len(total_unique_deliveries)}/{len(self.delivery_points)} ({coverage_percentage:.1f}%)\n"
+                f"• Time: {time.time() - self.wave_start_time:.1f}s"
             )
         except Exception as e:
             print(f"Error showing completion message: {e}")
-            
-    def start_next_wave(self):
-        """Start the next wave of vehicles"""
-        if self.current_wave_number >= self.max_waves:
-            print("All waves completed!")
-            QMessageBox.information(self, "Complete", "All delivery waves completed!")
-            return
-
-        self.current_wave_number += 1
-        wave_key = f"wave_{self.current_wave_number}"
-
-        if wave_key not in self.backend_waves:
-            print(f"Wave {self.current_wave_number} not found")
-            return
-
-        # Stop current vehicles
-        self.stop_vehicles_complete()
-
-        # Load next wave
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        assignments = self.convert_wave_to_assignments(self.backend_waves[wave_key])
-        loop.close()
-
-        # Start new wave
-        self.vehicles_started = False
-        QTimer.singleShot(1000, lambda: self.start_wave_with_assignments(assignments))
-
-    def start_wave_with_assignments(self, assignments):
-        """Start a specific wave with given assignments"""
-        if self._widgets_destroyed or self._shutdown_in_progress:
-            return False
-
-        if not self.map_ready:
-            QMessageBox.warning(self, "Map Not Ready", "Please wait for the map to finish loading.")
-            return False
-
-        if not assignments:
-            QMessageBox.warning(self, "No Assignments", "No assignments available for this wave.")
-            return False
-
-        # Show progress dialog
-        self._progress_mutex.lock()
-        try:
-            if self.progress_dialog is None:
-                self.progress_dialog = QProgressDialog(
-                    f"Building routes for Wave {self.current_wave_number}...", 
-                    "Cancel", 0, 100, self
-                )
-                self.progress_dialog.setWindowTitle(f"Wave {self.current_wave_number} Loading")
-                self.progress_dialog.setModal(True)
-                self.progress_dialog.show()
-        finally:
-            self._progress_mutex.unlock()
-
-        # Build routes using wave assignments
-        self.route_builder = OptimizedRouteBuilder(self.depot_coords, assignments, self)
-        self.route_builder.progress_updated.connect(self.on_route_progress)
-        self.route_builder.all_routes_completed.connect(self.on_wave_routes_completed)
-        self.route_builder.start()
-
-        self.vehicles_started = True
-        self.vehicles_paused = False
-
-        return True
-
-    def on_wave_routes_completed(self, vehicles_dict):
-        """Handle completion of wave route building"""
-        if self._widgets_destroyed or self._shutdown_in_progress:
-            return
-
-        # Clean up progress dialog
-        self._cleanup_progress_dialog()
-
-        # Store vehicles and start simulation
-        self.vehicles = vehicles_dict
-        self.wave_running = True
-        self.wave_start_time = time.time()
-
-        # Update UI
-        self.update_all_vehicle_statuses("Moving")
-
-        # Send to map
-        self.send_vehicles_to_js_batch()
-
-        # Update status bar with wave info
-        try:
-            self.statusBar().showMessage(
-                f"Wave {self.current_wave_number}/{self.max_waves} - "
-                f"{len(self.vehicles)} vehicles active"
-            )
-        except Exception as e:
-            print(f"Error updating status bar: {e}")
-
-        print(f"✅ Wave {self.current_wave_number} started with {len(self.vehicles)} vehicles")
     
     def _cleanup_progress_dialog(self):
         """Safely clean up progress dialog"""
@@ -1108,6 +1433,120 @@ class IndiaAirspaceMap(QMainWindow):
         print("Vehicle movement paused! Vehicles remain visible at current positions.")
         return True
     
+    def start_next_wave(self):
+        """Start the next wave of vehicles"""
+        if self._widgets_destroyed or self._shutdown_in_progress:
+            return
+
+        # Cancel auto-start timer if running
+        if self.auto_next_wave_timer:
+            self.auto_next_wave_timer.stop()
+            self.auto_next_wave_timer = None
+
+        self.waiting_for_next_wave = False
+        self.wave_completed = False
+
+        # Hide next wave button
+        if self._is_valid_widget(self.next_wave_action):
+            self.next_wave_action.setVisible(False)
+
+        # Move to next wave
+        self.current_wave += 1
+
+        # Check if we have more waves
+        if hasattr(self, 'waves_data') and self.current_wave < len(self.waves_data):
+            print(f"Starting Wave {self.current_wave + 1} of {len(self.waves_data)}")
+
+            # Clear current vehicles
+            self.vehicles.clear()
+            if self.map_ready:
+                try:
+                    self.map_view.page().runJavaScript("window.clearAllVehicles && window.clearAllVehicles();")
+                except Exception as e:
+                    print(f"Error clearing map vehicles: {e}")
+
+            # Start new wave
+            self.start_vehicles_optimized()
+
+            # Update status
+            try:
+                if hasattr(self, 'statusBar') and not self._widgets_destroyed:
+                    self.statusBar().showMessage(
+                        f"Wave {self.current_wave + 1}/{len(self.waves_data)} started - "
+                        f"{len(self.vehicles)} vehicles dispatched"
+                    )
+            except Exception as e:
+                print(f"Error updating status: {e}")
+        else:
+            # All waves completed
+            print("All waves completed!")
+            try:
+                QMessageBox.information(
+                    self,
+                    "All Waves Completed",
+                    f"All {len(self.waves_data) if hasattr(self, 'waves_data') else 'available'} waves have been completed!\n\n"
+                    f"Fleet operations finished successfully."
+                )
+            except Exception as e:
+                print(f"Error showing completion message: {e}")
+
+            # Reset to first wave
+            self.current_wave = 0
+            self.vehicles_started = False
+
+            if self._is_valid_widget(self.start_stop_action):
+                self.start_stop_action.setChecked(False)
+                self.start_stop_action.setText("▶ Start Vehicles")
+
+    def start_auto_next_wave_timer(self):
+        """Start 5-minute timer for automatic next wave"""
+        if self._widgets_destroyed or self._shutdown_in_progress:
+            return
+
+        self.waiting_for_next_wave = True
+
+        # Create countdown timer (5 minutes = 300 seconds)
+        self.auto_next_wave_timer = QTimer()
+        self.auto_next_wave_countdown = 300  # 5 minutes in seconds
+
+        def countdown_tick():
+            if self._widgets_destroyed or not self.waiting_for_next_wave:
+                if self.auto_next_wave_timer:
+                    self.auto_next_wave_timer.stop()
+                return
+
+            self.auto_next_wave_countdown -= 1
+
+            # Update button text with countdown
+            if self._is_valid_widget(self.next_wave_action):
+                minutes = self.auto_next_wave_countdown // 60
+                seconds = self.auto_next_wave_countdown % 60
+                self.next_wave_action.setText(f"⏭ Next Wave (Auto in {minutes}:{seconds:02d})")
+
+            # Update status bar
+            try:
+                if hasattr(self, 'statusBar') and not self._widgets_destroyed:
+                    minutes = self.auto_next_wave_countdown // 60
+                    seconds = self.auto_next_wave_countdown % 60
+                    self.statusBar().showMessage(
+                        f"Wave {self.current_wave + 1} completed - "
+                        f"Next wave starting automatically in {minutes}:{seconds:02d} "
+                        f"(or click 'Next Wave' to start now)"
+                    )
+            except Exception as e:
+                print(f"Error updating countdown status: {e}")
+
+            # When countdown reaches zero, start next wave
+            if self.auto_next_wave_countdown <= 0:
+                if self.auto_next_wave_timer:
+                    self.auto_next_wave_timer.stop()
+                print("Auto-starting next wave after 5-minute wait...")
+                self.start_next_wave()
+
+        self.auto_next_wave_timer.timeout.connect(countdown_tick)
+        self.auto_next_wave_timer.start(1000)  # Update every second
+
+        print("Started 5-minute auto-start timer for next wave")
     def restart_vehicles(self):
         """Restart vehicles from the beginning of their routes"""
         if self._widgets_destroyed or not self.vehicles_started or not self.vehicles:
@@ -1210,31 +1649,95 @@ class IndiaAirspaceMap(QMainWindow):
                         print(f"Error updating vehicle {name} status: {e}")
         
         # Check if all vehicles completed their routes
-        if self.wave_running and self.all_vehicles_returned():
+        if self.wave_running and self.all_vehicles_returned() and not self.wave_completed:
             self.wave_running = False
-            print(f"Wave {self.current_wave_number} completed!")  # CHANGED THIS LINE
-
-            # Show next wave button if more waves available
-            if self.current_wave_number < self.max_waves and self._is_valid_widget(self.next_wave_action):
-                self.next_wave_action.setVisible(True)
-
+            self.wave_completed = True
+            # Calculate wave statistics from backend data
+            total_distance = sum(v.get("distance", 0) for v in self.vehicles.values())
+            total_cost = sum(v.get("cost", 0) for v in self.vehicles.values())
+            total_weight = sum(v.get("backend_weight", 0) for v in self.vehicles.values())
+            total_deliveries = sum(len(v.get("all_deliveries", [])) for v in self.vehicles.values())
+            
+            print(f"Wave {self.current_wave + 1} completed!")
+            print(f"  Total Distance: {total_distance:.2f} km")
+            print(f"  Total Cost: ${total_cost:.2f}")
+            print(f"  Total Weight: {total_weight:.2f} kg")
+            print(f"  Total Deliveries: {total_deliveries}")
+            
             # Calculate final statistics
             total_deliveries = sum(len(v.get("all_deliveries", [v["assigned_delivery"]])) for v in self.vehicles.values())
             total_unique_points = set()
             for v in self.vehicles.values():
                 for delivery in v.get("all_deliveries", [v["assigned_delivery"]]):
                     total_unique_points.add(tuple(delivery))
-
-            # Update status bar
-            try:
-                if hasattr(self, 'statusBar') and not self._widgets_destroyed:
-                    self.statusBar().showMessage(
-                        f"Wave {self.current_wave_number}/{self.max_waves} completed - "  # CHANGED THIS LINE
-                        f"Fleet: {len(self.vehicles)} vehicles - "
-                        f"Completed: {total_deliveries} delivery assignments covering {len(total_unique_points)} unique points"
+                    
+            # Check if there are more waves
+            has_more_waves = hasattr(self, 'waves_data') and self.current_wave < len(self.waves_data) - 1
+    
+            if has_more_waves:
+                # Show Next Wave button and start auto-timer
+                if self._is_valid_widget(self.next_wave_action):
+                    self.next_wave_action.setVisible(True)
+                    self.next_wave_action.setText("⏭ Next Wave")
+                    
+                # Start 5-minute auto-start timer
+                self.start_auto_next_wave_timer()
+                
+                # Update status bar
+                try:
+                    if hasattr(self, 'statusBar') and not self._widgets_destroyed:
+                        self.statusBar().showMessage(
+                            f"Wave {self.current_wave + 1} completed - "
+                            f"{total_deliveries} deliveries | "
+                            f"Distance: {total_distance:.2f} km | "
+                            f"Cost: ${total_cost:.2f} | "
+                            f"Weight: {total_weight:.2f} kg"
+                        )
+                except Exception as e:
+                    print(f"Error updating completion status: {e}")
+                    
+                # Show notification
+                try:
+                    QMessageBox.information(
+                        self,
+                        f"Wave {self.current_wave + 1} Completed",
+                        f"Wave {self.current_wave + 1} delivery cycle completed!\n\n"
+                        f"Deliveries: {total_deliveries} assignments\n"
+                        f"Distance: {total_distance:.2f} km\n"
+                        f"Cost: ${total_cost:.2f}\n"
+                        f"Weight: {total_weight:.2f} kg\n"
+                        f"Vehicles: {len(self.vehicles)}\n\n"
+                        f"Next wave will start automatically in 5 minutes."
                     )
-            except Exception as e:
-                print(f"Error updating completion status: {e}")
+                except Exception as e:
+                    print(f"Error showing wave completion message: {e}")
+            else:
+                # Last wave completed - no more waves
+                try:
+                    if hasattr(self, 'statusBar') and not self._widgets_destroyed:
+                        self.statusBar().showMessage(
+                            f"Final wave completed - "
+                            f"Fleet: {len(self.vehicles)} vehicles - "
+                            f"Completed: {total_deliveries} delivery assignments covering {len(total_unique_points)} unique points"
+                        )
+                except Exception as e:
+                    print(f"Error updating completion status: {e}")
+                
+                # Show completion message
+                try:
+                    total_waves = len(self.waves_data) if hasattr(self, 'waves_data') else 1
+                    QMessageBox.information(
+                        self,
+                        "All Waves Completed",
+                        f"All {total_waves} wave(s) completed successfully!\n\n"
+                        f"Final wave statistics:\n"
+                        f"• Completed: {total_deliveries} delivery assignments\n"
+                        f"• Unique points: {len(total_unique_points)} points\n"
+                        f"• Vehicles: {len(self.vehicles)}\n\n"
+                        f"Fleet operations finished."
+                    )
+                except Exception as e:
+                    print(f"Error showing final completion message: {e}")
     
     def all_vehicles_returned(self):
         """Check if all vehicles completed their routes"""
@@ -1344,10 +1847,20 @@ class IndiaAirspaceMap(QMainWindow):
 
             def run(self):
                 try:
-                    # Create new event loop for this thread
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     loop.run_until_complete(self.parent.process_nodes_and_computations())
+
+                    # Wait for backend to write file
+                    import time
+                    time.sleep(1)
+
+                    # Load initial solution from file
+                    initial_solution = self.parent.load_initial_solution_from_file()
+                    if initial_solution:
+                        self.parent.initial_solution = initial_solution
+                        self.parent.parse_wave_information(initial_solution)
+
                     loop.close()
                     self.finished.emit()
                 except Exception as e:
@@ -1358,7 +1871,6 @@ class IndiaAirspaceMap(QMainWindow):
         self.depot_backend_processor.finished.connect(lambda: print("Depot backend processing thread finished"))
         self.depot_backend_processor.error.connect(lambda err: print(f"Depot backend processing error: {err}"))
         self.depot_backend_processor.start()
-
     def stop_vehicles_complete(self):
         """Completely stop and clear all vehicles with cleanup"""
         self.vehicles_started = False
@@ -1525,15 +2037,14 @@ class IndiaAirspaceMap(QMainWindow):
             print(f"Error updating noise stats: {e}")
     
     def create_map_file(self):
-        """Create the HTML map file with JavaScript"""
+        """Create or update the HTML map file with JavaScript"""
         try:
-            timestamp = str(int(time.time() * 1000))
-            self.map_path = os.path.abspath(f"optimized_map_{timestamp}.html")
+            self.map_path = os.path.abspath("map.html")
             with open(self.map_path, "w", encoding="utf-8") as f:
                 f.write(HTML_TEMPLATE)
             self.map_view.setUrl(QUrl.fromLocalFile(self.map_path))
         except Exception as e:
-            print(f"Error creating map file: {e}")
+            print(f"Error loading map content: {e}")
     
     def on_map_ready(self, success):
         """Initialize map when ready - shows all delivery points"""
@@ -1652,6 +2163,14 @@ class IndiaAirspaceMap(QMainWindow):
         
         # Clean up progress dialog first
         self._cleanup_progress_dialog()
+        
+        # Stop auto next wave timer
+        try:
+            if hasattr(self, 'auto_next_wave_timer') and self.auto_next_wave_timer:
+                self.auto_next_wave_timer.stop()
+                self.auto_next_wave_timer = None
+        except Exception as e:
+            print(f"Error stopping auto next wave timer: {e}")
         
         try:
             # Stop timers
