@@ -182,7 +182,7 @@ class DepotSelectionWindow(QDialog):
         self.fleet_summary.setTextFormat(Qt.RichText)
         self.fleet_summary.setStyleSheet(f"""
             font-size: 13px; 
-            color: #cccccc; 
+            color: #ffffff; 
             padding: 10px; 
             background-color: #404040; 
             border-radius: 4px;
