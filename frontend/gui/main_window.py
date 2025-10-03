@@ -1044,10 +1044,6 @@ class IndiaAirspaceMap(QMainWindow):
             
         if self.start_stop_action.isChecked():
             self.start_vehicles_optimized()
-            self.start_stop_action.setText("⏸ Pause Vehicles")
-            self.start_stop_action.setToolTip("Click to pause all vehicles")
-            if self._is_valid_widget(self.restart_action):
-                self.restart_action.setVisible(True)
         else:
             self.pause_vehicles()
             self.start_stop_action.setText("▶ Resume Vehicles")
@@ -1210,6 +1206,18 @@ class IndiaAirspaceMap(QMainWindow):
                         0, 100, 
                         self
                     )
+                    self.progress_dialog.setMinimumWidth(400)  # Set fixed width
+                    self.progress_dialog.setStyleSheet("""
+                        QProgressDialog {
+                            min-width: 400px;
+                            min-height: 150px;
+                        }
+                        QProgressBar {
+                            min-width: 350px;
+                            
+                            text-align: center;
+                        }
+                    """)
                     self.progress_dialog.setWindowTitle("Optimizing Fleet Routes")
                     self.progress_dialog.setWindowModality(Qt.NonModal)  # ← KEY: Non-blocking
                     self.progress_dialog.setMinimumDuration(0)
@@ -1234,6 +1242,11 @@ class IndiaAirspaceMap(QMainWindow):
             # Resume paused vehicles
             self.vehicles_paused = False
             self.update_all_vehicle_statuses("Moving")
+            
+            # Update button text when resuming
+            if self._is_valid_widget(self.start_stop_action):
+                self.start_stop_action.setChecked(True)
+                self.start_stop_action.setText("⏸ Pause Vehicles")
 
         return True
     
@@ -1294,9 +1307,6 @@ class IndiaAirspaceMap(QMainWindow):
         self.wave_running = True
         self.wave_start_time = time.time()
 
-        # Update UI
-        self.update_all_vehicle_statuses("Moving")
-
         # Send to map in batches
         self.send_vehicles_to_js_batch()
 
@@ -1329,6 +1339,17 @@ class IndiaAirspaceMap(QMainWindow):
             )
         except Exception as e:
             print(f"Error showing completion message: {e}")
+        
+        # NOW update UI and show buttons AFTER user clicks OK
+        self.update_all_vehicle_statuses("Moving")
+    
+        # Show Pause and Restart buttons only after OK is clicked
+        if self._is_valid_widget(self.start_stop_action):
+            self.start_stop_action.setChecked(True)
+            self.start_stop_action.setText("⏸ Pause Vehicles")
+        
+        if self._is_valid_widget(self.restart_action):
+            self.restart_action.setVisible(True)
     
     def _cleanup_progress_dialog(self):
         """Safely clean up progress dialog"""
