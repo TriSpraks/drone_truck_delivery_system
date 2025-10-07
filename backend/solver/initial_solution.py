@@ -271,24 +271,25 @@ async def build_initial_solution():
                 wave_has_assignments = True
         
         # Priority 2: Assign truck clusters to electric trucks
+        used_e_trucks = []
         for truck_id in available_e_trucks:
             if not remaining_truck_clusters:
                 break
-                
+
             truck = vehicles_map[truck_id]
             assigned_nodes, total_weight, total_volume, leftover_clusters = fit_clusters_to_truck_aggressive(
                 remaining_truck_clusters, truck, "E", depot_id, matrix, nodes_map
             )
-            
+
             if assigned_nodes:
                 route_nodes = [depot_id] + [n["node_id"] for n in assigned_nodes] + [depot_id]
                 dist, cost = 0, 0
-                
+
                 for j in range(len(route_nodes)-1):
                     d, _, c = matrix[(route_nodes[j], route_nodes[j+1])]["E"]
                     dist += d
                     cost += c
-                
+
                 truck_route = {
                     "vehicle_id": truck_id,
                     "node_ids": [n["node_id"] for n in assigned_nodes],
@@ -302,35 +303,42 @@ async def build_initial_solution():
                         "volume_percent": round((total_volume / truck["capacity_cm3"]) * 100, 2)
                     }
                 }
-                
+
                 wave_routes["trucks"].append(truck_route)
                 wave_routes["total_distance"] = round(wave_routes["total_distance"] + dist, 4)
                 wave_routes["total_cost"] = round(wave_routes["total_cost"] + cost, 4)
                 wave_routes["total_weight"] = round(wave_routes["total_weight"] + total_weight, 2)
                 wave_routes["total_volume"] = round(wave_routes["total_volume"] + total_volume, 2)
-                
+
                 remaining_truck_clusters = leftover_clusters
+                used_e_trucks.append(truck_id)
                 wave_has_assignments = True
+
+        # Remove used E trucks from available
+        for truck_id in used_e_trucks:
+            if truck_id in available_e_trucks:
+                available_e_trucks.remove(truck_id)
         
         # Priority 3: Use fuel trucks for remaining truck clusters
+        used_f_trucks = []
         for truck_id in available_f_trucks:
             if not remaining_truck_clusters:
                 break
-                
+
             truck = vehicles_map[truck_id]
             assigned_nodes, total_weight, total_volume, leftover_clusters = fit_clusters_to_truck_aggressive(
                 remaining_truck_clusters, truck, "F", depot_id, matrix, nodes_map
             )
-            
+
             if assigned_nodes:
                 route_nodes = [depot_id] + [n["node_id"] for n in assigned_nodes] + [depot_id]
                 dist, cost = 0, 0
-                
+
                 for j in range(len(route_nodes)-1):
                     d, _, c = matrix[(route_nodes[j], route_nodes[j+1])]["F"]
                     dist += d
                     cost += c
-                
+
                 truck_route = {
                     "vehicle_id": truck_id,
                     "node_ids": [n["node_id"] for n in assigned_nodes],
@@ -344,15 +352,21 @@ async def build_initial_solution():
                         "volume_percent": round((total_volume / truck["capacity_cm3"]) * 100, 2)
                     }
                 }
-                
+
                 wave_routes["trucks"].append(truck_route)
                 wave_routes["total_distance"] = round(wave_routes["total_distance"] + dist, 4)
                 wave_routes["total_cost"] = round(wave_routes["total_cost"] + cost, 4)
                 wave_routes["total_weight"] = round(wave_routes["total_weight"] + total_weight, 2)
                 wave_routes["total_volume"] = round(wave_routes["total_volume"] + total_volume, 2)
-                
+
                 remaining_truck_clusters = leftover_clusters
+                used_f_trucks.append(truck_id)
                 wave_has_assignments = True
+
+        # Remove used F trucks from available
+        for truck_id in used_f_trucks:
+            if truck_id in available_f_trucks:
+                available_f_trucks.remove(truck_id)
 
         # Only add wave to solution if it has assignments
         if wave_has_assignments:

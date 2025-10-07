@@ -12,6 +12,7 @@ from matrix.distance import compute_distances
 from matrix.matrix import generate_vehicle_matrix
 from matrix.vehicle import create_fleet_vehicles, FuelTruck, ElectricTruck, Drone
 from solver.initial_solution import build_initial_solution
+from solution.solution import generate_solution
 
 # ----------------- Lifespan -----------------
 @asynccontextmanager
@@ -128,13 +129,21 @@ async def insert_nodes(request: dict):
     # Build initial solution
     initial_solution = await build_initial_solution()
 
-    # Optionally save
-    import json
     with open("initial_solution.json", "w") as f:
         json.dump(initial_solution, f, indent=2)
 
     print("Initial solution generated:")
     print(initial_solution)
+
+    # Trigger the solution generator
+    solution_data = await generate_solution()
+
+    # Save to solution.json
+    with open("solution.json", "w") as f:
+        json.dump(solution_data, f, indent=4)
+
+    print("Optimized solution saved to solution.json")
+    print(solution_data)
 
 
     total_time = time.time() - start_time
@@ -228,6 +237,51 @@ async def api_nodes():
         return nodes
     except Exception as e:
         return JSONResponse({"error": "failed to fetch nodes", "detail": str(e)}, status_code=500)
+
+@app.post("/api/generate_initial_solution")
+async def generate_initial_solution_endpoint():
+    """Generate the initial solution"""
+    try:
+        initial_solution_data = await build_initial_solution()
+
+        # Save to initial_solution.json
+        with open("initial_solution.json", "w") as f:
+            json.dump(initial_solution_data, f, indent=2)
+
+        print("Initial solution generated:")
+        print(initial_solution_data)
+
+        return initial_solution_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/generate_solution")
+async def generate_solution_endpoint():
+    """Generate the optimized solution using ALNS"""
+    try:
+        solution_data = await generate_solution()
+
+        # Save to solution.json
+        with open("solution.json", "w") as f:
+            json.dump(solution_data, f, indent=4)
+
+        print("Optimized solution saved to solution.json")
+        print(solution_data)
+
+        return solution_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/solution")
+async def api_solution():
+    p = Path(__file__).parent / "solution.json"
+    if not p.exists():
+        return JSONResponse({"error": "solution.json not found"}, status_code=404)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data
+    except Exception as e:
+        return JSONResponse({"error": "failed to read solution.json", "detail": str(e)}, status_code=500)
 # ----------------- Run -----------------
 if __name__ == "__main__":
     import uvicorn
