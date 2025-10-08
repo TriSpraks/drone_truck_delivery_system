@@ -195,6 +195,7 @@ import webbrowser
 from typing import List, Dict, Optional, Tuple
 from core.route_plotter import build_map_from_solution, build_node_lookup
 from config.app_config import BACKEND_URL  # ensure BACKEND_URL is set like "http://127.0.0.1:8000"
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 import threading
 
 
