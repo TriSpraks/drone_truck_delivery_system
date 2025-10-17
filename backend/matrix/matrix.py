@@ -1,6 +1,6 @@
 import pandas as pd
 import asyncio
-from utils import db_handler
+from ..utils import db_handler
 from .vehicle import FuelTruck, ElectricTruck, Drone
 
 async def generate_vehicle_matrix(nodes, dist_rows, fleet_config=None):

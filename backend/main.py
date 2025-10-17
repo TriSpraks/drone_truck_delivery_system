@@ -7,12 +7,12 @@ from pathlib import Path
 import time
 import json
 
-from utils import db_handler
-from matrix.distance import compute_distances
-from matrix.matrix import generate_vehicle_matrix
-from matrix.vehicle import create_fleet_vehicles, FuelTruck, ElectricTruck, Drone
-from solver.initial_solution import build_initial_solution
-from solution.solution import generate_solution
+from .utils import db_handler
+from .matrix.distance import compute_distances
+from .matrix.matrix import generate_vehicle_matrix
+from .matrix.vehicle import create_fleet_vehicles, FuelTruck, ElectricTruck, Drone
+from .solver.initial_solution import build_initial_solution
+from .solution.solution import generate_solution
 
 # ----------------- Lifespan -----------------
 @asynccontextmanager
@@ -129,7 +129,7 @@ async def insert_nodes(request: dict):
     # Build initial solution
     initial_solution = await build_initial_solution()
 
-    with open("initial_solution.json", "w") as f:
+    with open("backend/initial_solution.json", "w") as f:
         json.dump(initial_solution, f, indent=2)
 
     print("Initial solution generated:")
@@ -139,7 +139,7 @@ async def insert_nodes(request: dict):
     solution_data = await generate_solution()
 
     # Save to solution.json
-    with open("solution.json", "w") as f:
+    with open("backend/solution.json", "w") as f:
         json.dump(solution_data, f, indent=4)
 
     print("Optimized solution saved to solution.json")

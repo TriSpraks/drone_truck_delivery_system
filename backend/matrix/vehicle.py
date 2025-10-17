@@ -1,4 +1,4 @@
-from utils import config  # project-specific configuration constants
+from ..utils import config  # project-specific configuration constants
 
 # ───────────────────────────────
 # Base Vehicle Class

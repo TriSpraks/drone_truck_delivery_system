@@ -1,7 +1,7 @@
 # utils/db_handler.py
 import asyncio
 from libsql_client import create_client
-from utils import config
+from . import config
 
 # ----------------- Globals -----------------
 _client = None
