@@ -1,5 +1,5 @@
 import ast
-from utils import db_handler
+from ..utils import db_handler
 
 async def fetch_data():
     nodes = await db_handler.get_nodes()

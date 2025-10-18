@@ -15,10 +15,10 @@ from ALNS.alns.select import RouletteWheel
 from ALNS.alns.stop import MaxRuntime
 
 # Local module imports
-import backend.solution.preprocess as preprocess
-from backend.solution.preprocess import TspState
-import backend.solution.destroy as destroy
-import backend.solution.repair as repair
+from . import preprocess
+from .preprocess import TspState
+from . import destroy
+from . import repair
 
 
 class SolutionState:

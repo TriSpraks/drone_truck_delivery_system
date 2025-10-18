@@ -1,27 +1,32 @@
-[project]
+[tool.poetry]
 name = "drone-delivery-system"
 version = "0.1.0"
 description = "A PyQt5 frontend with a FastAPI backend for a delivery system."
-authors = [
-    {name = "Keerthana430", email = "keerthanakrisuj@gmail.com"}
-]
+authors = ["Keerthana430 <keerthanakrisuj@gmail.com>"]
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
-package-mode = false
 
-# These are the CORE dependencies needed for your entire project to run.
-dependencies = [
-    # --- Backend Dependencies ---
-    "fastapi",                   # The main web framework for your backend API
-    "uvicorn[standard]",         # The server that runs your FastAPI application
-    "libsql-client",             # The official driver to connect to your Turso/libSQL database
-    "python-dotenv",             # For managing environment variables (like your database URL and token)
+[tool.poetry.dependencies]
+python = ">=3.11,<3.14"
 
-    # --- Frontend Dependencies ---
-    "PyQt5",                     # The main GUI framework for your desktop application
-    "requests",                  # The standard library for making HTTP requests from your frontend to your backend
-]
+# --- BACKEND DEPENDENCIES ---
+# These are the only packages that will be installed on your Render server.
+fastapi = "^0.118.2"
+uvicorn = {extras = ["standard"], version = "^0.37.0"}
+libsql-client = "^0.3.1"
+python-dotenv = "^1.0.1"
+pandas = "^2.2.2"
+requests = "^2.32.5"
+alns = "^7.0.0"
+pyinstaller = "^6.16.0"
+pyqtgraph = "^0.13.7"
+numpy = "^2.2.4"
+scipy = "^1.15.2"
+matplotlib = "^3.10.5"
+scikit-learn = "^1.6.1"
+folium = "^0.20.0"
+aiohttp = "^3.12.15"
+pydantic = "^2.11.7"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"

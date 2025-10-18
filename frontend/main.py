@@ -4,6 +4,11 @@ Main entry point for India Airspace Management System - Enhanced with Fleet Conf
 """
 import sys
 import os
+
+# Change to the script's directory to ensure consistent imports and file paths
+script_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(script_dir)
+
 from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget
 from PyQt5.QtCore import Qt
 from gui.main_window import IndiaAirspaceMap

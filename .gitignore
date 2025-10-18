@@ -19,5 +19,5 @@ map.html
 frontend/depot_selection_map_*.html
 
 # Ignore generated json files
-initial_solution.json
-solution.json
+backend/initial_solution.json
+backend/solution.json

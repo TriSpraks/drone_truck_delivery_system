@@ -3,7 +3,7 @@ import asyncio
 import aiohttp
 import random
 import logging
-from utils import config
+from ..utils import config
 from .vehicle import Drone
 
 ORS_API_URL = "https://api.openrouteservice.org/v2/matrix/driving-car"
