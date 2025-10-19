@@ -1,19 +1,14 @@
 """
-Widgets module for India Airspace Management System
-
-This module contains all custom UI widgets including vehicle controls,
-delivery information displays, and sound monitoring components.
+Widgets package initialization - UPDATED for Analytics Dashboard
 """
 
+# Import widgets
 from .vehicle_control import VehicleControlPanel
 from .delivery_info import DeliveryInfoWidget
-from .sound_monitoring import SoundGraphWidget, NoiseStatisticsWidget
+from .analytics_dashboard import AnalyticsDashboard
 
 __all__ = [
     'VehicleControlPanel',
     'DeliveryInfoWidget',
-    'SoundGraphWidget',
-    'NoiseStatisticsWidget'
+    'AnalyticsDashboard',
 ]
-
-__version__ = '1.0.0'

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Main entry point for India Airspace Management System - Enhanced with Fleet Configuration
+Main entry point for India Airspace Management System - Enhanced with Analytics Dashboard
 """
 import sys
 import os
@@ -93,35 +93,44 @@ class MainContainer(QMainWindow):
         print("✅ Comprehensive No-Fly Zones across India")
         print("✅ Real-time Vehicle Movement (NO map reloading)")
         print("✅ Left Sidebar: Vehicle Controls & Delivery Info")
-        print("✅ Right Sidebar: Drone Sound Monitoring & Statistics")
+        print("✅ Right Sidebar: Delivery Performance Analytics")
+        print("✅ Backend Optimization: Finds optimal routes for all vehicles")
         print("✅ Interactive Controls:")
         print("   • Change Depot Location & Fleet Configuration (anytime)")
         print("   • Toggle No-Fly Zones")
-        print("   • Toggle Vehicles") 
+        print("   • Toggle Vehicles")
         print("   • Start/Stop Vehicle Movement")
         print(f"\n🚀 Your Fleet ({total_vehicles} vehicles):")
         print(f"• Drones: {drones} units - Blue icons with dotted routes (60 km/h)")
-        print(f"• Electric Trucks: {electric_trucks} units - Green icons (40 km/h)")  
+        print(f"• Electric Trucks: {electric_trucks} units - Green icons (40 km/h)")
         print(f"• Fuel Trucks: {fuel_trucks} units - Orange icons (35 km/h)")
         print(f"\n📦 Delivery System:")
         print("• All vehicles start from YOUR selected depot")
         print(f"• {customer_count} delivery points generated around depot")
         print("• Real-time vehicle trails and status monitoring")
         print("• Each vehicle gets assigned a delivery route")
+        print("\n📊 Analytics Dashboard (Right Panel):")
+        print("• Cost Analysis: Compare unit costs ($/delivery)")
+        print("• Distance Analysis: Avg distance per delivery by vehicle")
+        print("• Capacity Utilization: Weight & volume % for trucks")
+        print("• Summary Statistics: Total metrics and breakdowns")
+        print("• Auto-refresh: Updates every 3 seconds from backend")
         print("\n🎯 Advanced Features:")
         print("• Full depot & fleet reconfiguration without restarting")
         print("• Automatic delivery point regeneration")
-        print("• Real-time sound monitoring simulation")
+        print("• Backend-optimized routing (OSRM integration)")
         print("• Comprehensive vehicle status tracking")
+        print("• Real-time performance metrics visualization")
         print("• Scalable fleet management (up to 200 vehicles total)")
         print("="*70)
     
     def closeEvent(self, event):
         """Clean up on close"""
-        # Clean up depot selection
+        # Stop the selection timer
         if hasattr(self.depot_selection, 'selection_timer'):
             self.depot_selection.selection_timer.stop()
         
+        # Clean up depot selection map
         if hasattr(self.depot_selection, 'map_path'):
             try:
                 if os.path.exists(self.depot_selection.map_path):
@@ -131,6 +140,12 @@ class MainContainer(QMainWindow):
         
         # Clean up main app if it exists
         if self.main_window:
+            # Close analytics dashboard
+            if hasattr(self.main_window, 'analytics_dashboard'):
+                if hasattr(self.main_window.analytics_dashboard, 'refresh_timer'):
+                    self.main_window.analytics_dashboard.refresh_timer.stop()
+            
+            # Close main window
             self.main_window.closeEvent(event)
         
         event.accept()
@@ -139,10 +154,11 @@ class MainContainer(QMainWindow):
 def main():
     """Main application entry point with depot, customer, and fleet selection"""
     app = QApplication(sys.argv)
-    app.setApplicationName("India Airspace Management - Custom Depot & Fleet Configuration")
+    app.setApplicationName("India Airspace Management - Analytics & Optimization")
     app.setStyle('Fusion')
     
     print("Starting Depot & Fleet Configuration Selection...")
+    print("="*70)
     
     # Create container (handles depot selection -> main app transition)
     container = MainContainer()
