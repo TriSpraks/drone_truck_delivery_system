@@ -81,7 +81,11 @@ class OptimizedRouteBuilder(QThread):
                     "distance": assignment.get("distance", 0),
                     "cost": assignment.get("cost", 0),
                     "backend_weight": assignment.get("total_weight", 0),
-                    "backend_volume": assignment.get("total_volume", 0)
+                    "backend_volume": assignment.get("total_volume", 0),
+                    "node_ids": assignment.get("node_ids", []),
+                    "route_node_ids": assignment.get("route_node_ids", []),
+                    "weight_percent": assignment.get("weight_percent", 0),
+                    "volume_percent": assignment.get("volume_percent", 0)
                 }
             finally:
                 self.mutex.unlock()

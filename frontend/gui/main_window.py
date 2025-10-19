@@ -1,14 +1,13 @@
 """
-REFACTORED Main application window for India Airspace Management System
-Ultra-simplified by extracting functionality into separate modules
-Reduced from ~800 lines to ~200 lines
+Main application window - BLOCKS until backend solution is ready
+Shows progress dialog while backend processes, prevents premature interaction
 """
 import sys
 import os
 import math
 import asyncio
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                              QMessageBox)
+                              QMessageBox, QProgressDialog, QApplication)
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal, QMutex
 
@@ -31,47 +30,88 @@ from core.delivery_generator import DeliveryPointGenerator
 
 
 class BackendProcessorThread(QThread):
-    """Background thread for backend processing"""
-    finished = pyqtSignal()
+    """Background thread for backend processing with detailed progress"""
+    finished = pyqtSignal(bool, object)  # success, solution_data
+    progress_update = pyqtSignal(str)  # status message
+    elapsed_time_update = pyqtSignal(int)  # elapsed seconds
     error = pyqtSignal(str)
-    timeout_signal = pyqtSignal()
 
-    def __init__(self, parent, timeout_seconds=30):
+    def __init__(self, parent):
         super().__init__()
         self.parent = parent
-        self.timeout_seconds = timeout_seconds
+        self.start_time = None
 
     def run(self):
         try:
+            import time
+            self.start_time = time.time()
+            
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            try:
-                loop.run_until_complete(
-                    asyncio.wait_for(
-                        self.process_backend(),
-                        timeout=self.timeout_seconds
-                    )
-                )
-            except asyncio.TimeoutError:
-                print(f"Backend processing timed out after {self.timeout_seconds} seconds")
-                self.timeout_signal.emit()
-                return
+            # Start timer thread
+            timer = QTimer()
+            timer.timeout.connect(self.update_elapsed_time)
+            timer.start(1000)  # Update every second
+            
+            self.progress_update.emit("Connecting to backend server...")
+            
+            # Process backend computations
+            success = loop.run_until_complete(self.process_backend())
+            
+            timer.stop()
+            
+            if success:
+                self.progress_update.emit("Loading optimized solution...")
+                
+                # Wait for file to be written
+                time.sleep(5)
+                
+                # Load solution
+                backend_folder = self.parent.get_backend_folder_path()
+                solution = BackendHandler.load_solution(backend_folder)
+                
+                if solution:
+                    elapsed = int(time.time() - self.start_time)
+                    self.progress_update.emit(f"Backend optimization complete! (took {elapsed}s)")
+                    self.finished.emit(True, solution)
+                else:
+                    self.progress_update.emit("Warning: Solution file not found")
+                    self.finished.emit(False, None)
+            else:
+                self.error.emit("Backend processing failed")
+                self.finished.emit(False, None)
             
             loop.close()
-            self.finished.emit()
+            
         except Exception as e:
+            print(f"❌ Error in backend thread: {e}")
+            import traceback
+            traceback.print_exc()
             self.error.emit(str(e))
+            self.finished.emit(False, None)
+    
+    def update_elapsed_time(self):
+        """Update elapsed time in progress dialog"""
+        if self.start_time:
+            import time
+            elapsed = int(time.time() - self.start_time)
+            self.elapsed_time_update.emit(elapsed)
 
     async def process_backend(self):
-        """Process backend computations"""
+        """Process backend computations with progress updates"""
         try:
+            num_nodes = len(self.parent.customer_nodes)
+            self.progress_update.emit(f"Sending {num_nodes} delivery nodes to backend...")
+            
             vehicle_config = {
                 "electric_trucks": self.parent.electric_trucks,
                 "fuel_trucks": self.parent.fuel_trucks,
                 "drones": self.parent.drones
             }
             
+            # Send nodes to backend
+            self.progress_update.emit(f"Computing distance matrix ({num_nodes}x{num_nodes} = {num_nodes*num_nodes} calculations)...")
             success = await BackendHandler.process_all_computations(
                 self.parent.customer_nodes,
                 self.parent.depot_node,
@@ -79,30 +119,24 @@ class BackendProcessorThread(QThread):
             )
             
             if success:
-                print("✅ Backend processing completed")
-                await asyncio.sleep(3)
+                self.progress_update.emit("Running optimization algorithm...")
+                await asyncio.sleep(2)  # Give backend time to complete
+                return True
+            else:
+                return False
                 
-                backend_folder = self.parent.get_backend_folder_path()
-                initial_solution = BackendHandler.load_initial_solution(backend_folder)
-                
-                if initial_solution:
-                    self.parent.initial_solution = initial_solution
-                    self.parent.waves_data = BackendHandler.parse_wave_information(initial_solution)
-                    print(f"✅ Loaded {len(self.parent.waves_data)} waves")
-                    
         except Exception as e:
             print(f"❌ Error in backend processing: {e}")
-            import traceback
-            traceback.print_exc()
+            return False
 
 
 class IndiaAirspaceMap(QMainWindow):
-    """Main application window - ultra-simplified and modular"""
+    """Main application window - WAITS for backend before allowing interaction"""
     
     def __init__(self, depot_coords=None, customer_count=5, 
                  electric_trucks=2, fuel_trucks=1, drones=3):
         super().__init__()
-        self.setWindowTitle("India Airspace Management - Optimized Fleet System")
+        self.setWindowTitle("India Airspace Management - Backend Optimized")
         self.setGeometry(50, 50, 1800, 1000)
         self.setMinimumSize(1600, 900)
         
@@ -110,6 +144,7 @@ class IndiaAirspaceMap(QMainWindow):
         self._widgets_destroyed = False
         self._shutdown_in_progress = False
         self._progress_mutex = QMutex()
+        self._backend_ready = False
         
         # Apply theme
         self.setStyleSheet(DARK_STYLE)
@@ -126,29 +161,40 @@ class IndiaAirspaceMap(QMainWindow):
         self.map_zoom = MAP_ZOOM
         self.no_fly_zones = get_india_no_fly_zones()
         
-        # Data structures
+        # Initialize data structures
         self.waves_data = []
-        self.initial_solution = None
-        
-        # Initialize controllers
-        self.vehicle_manager = VehicleManager(self.depot_coords)
-        self.wave_controller = WaveController(self)
-        self.vehicle_controller = VehicleController(self)
+        self.solution = None
         
         # Generate delivery points
+        print("\n" + "="*70)
+        print("INITIALIZING APPLICATION")
+        print("="*70)
+        print("Step 1: Generating delivery points...")
         results = DeliveryPointGenerator.generate_points(
             self.depot_coords, 
             self.customer_count
         )
         self.delivery_points, self.customer_nodes, self.depot_node = results
+        print(f"✅ Generated {len(self.customer_nodes)} customer nodes\n")
+        
+        # Initialize controllers
+        print("Step 2: Initializing controllers...")
+        self.vehicle_manager = VehicleManager(self.depot_coords)
+        self.wave_controller = WaveController(self)
+        self.vehicle_controller = VehicleController(self)
+        print("✅ Controllers initialized\n")
         
         # Setup UI
+        print("Step 3: Setting up user interface...")
         self.setup_ui()
         self.setup_data_simulator()
+        print("✅ UI setup complete\n")
         
-        # Create map handler after map view is created
+        # Create map handler
+        print("Step 4: Initializing map...")
         self.map_handler = MapHandler(self.map_view, HTML_TEMPLATE)
         self.map_handler.create_map_file()
+        print("✅ Map initialized\n")
         
         # Setup timers
         self.setup_timers()
@@ -156,8 +202,158 @@ class IndiaAirspaceMap(QMainWindow):
         # Show maximized
         self.showMaximized()
         
-        # Start backend processing
-        QTimer.singleShot(1000, self.start_backend_processing)
+        print("="*70)
+        print("APPLICATION WINDOW READY")
+        print("="*70 + "\n")
+        
+        # ========== CRITICAL: START BACKEND PROCESSING ==========
+        # This BLOCKS user interaction until backend completes
+        QTimer.singleShot(500, self.start_backend_processing_with_dialog)
+        # ========================================================
+    
+    def start_backend_processing_with_dialog(self):
+        """Start backend processing with BLOCKING progress dialog"""
+        # Calculate expected time
+        num_nodes = len(self.customer_nodes)
+        expected_seconds = BackendHandler.calculate_timeout(num_nodes)
+        expected_minutes = expected_seconds / 60
+        
+        # Create blocking progress dialog
+        self.backend_progress = QProgressDialog(
+            f"Initializing backend optimization...\n\n"
+            f"Processing {num_nodes} delivery nodes\n"
+            f"Expected time: {expected_minutes:.1f} minutes\n"
+            f"Elapsed: 0s",
+            None,  # No cancel button
+            0, 0,  # Indeterminate progress
+            self
+        )
+        self.backend_progress.setWindowTitle("Backend Processing")
+        self.backend_progress.setWindowModality(Qt.WindowModal)  # BLOCKS interaction
+        self.backend_progress.setMinimumDuration(0)
+        self.backend_progress.setCancelButton(None)  # Cannot cancel
+        self.backend_progress.setAutoClose(False)
+        self.backend_progress.setMinimumWidth(400)
+        self.backend_progress.show()
+        
+        print("\n" + "="*70)
+        print("STARTING BACKEND OPTIMIZATION")
+        print(f"Nodes: {num_nodes}")
+        print(f"Expected duration: {expected_minutes:.1f} minutes")
+        print("="*70)
+        
+        # Start backend thread
+        self.backend_thread = BackendProcessorThread(self)
+        self.backend_thread.progress_update.connect(self.on_backend_progress)
+        self.backend_thread.elapsed_time_update.connect(self.on_elapsed_time_update)
+        self.backend_thread.finished.connect(self.on_backend_finished)
+        self.backend_thread.error.connect(self.on_backend_error)
+        self.backend_thread.start()
+    
+    def on_elapsed_time_update(self, elapsed_seconds):
+        """Update dialog with elapsed time"""
+        if hasattr(self, 'backend_progress') and self.backend_progress:
+            num_nodes = len(self.customer_nodes)
+            expected_seconds = BackendHandler.calculate_timeout(num_nodes)
+            expected_minutes = expected_seconds / 60
+            elapsed_minutes = elapsed_seconds / 60
+            
+            # Get current status message (preserve it)
+            current_text = self.backend_progress.labelText().split('\n\n')[0]
+            
+            self.backend_progress.setLabelText(
+                f"{current_text}\n\n"
+                f"Processing {num_nodes} delivery nodes\n"
+                f"Expected time: {expected_minutes:.1f} minutes\n"
+                f"Elapsed: {elapsed_minutes:.1f} min ({elapsed_seconds}s)"
+            )
+            QApplication.processEvents()  # Force UI update
+    
+    def on_backend_progress(self, message):
+        """Update progress dialog with backend status"""
+        print(f"   {message}")
+        if hasattr(self, 'backend_progress') and self.backend_progress:
+            self.backend_progress.setLabelText(message)
+            QApplication.processEvents()  # Force UI update
+    
+    def on_backend_finished(self, success, solution_data):
+        """Handle backend completion"""
+        print("="*70)
+        
+        if success and solution_data:
+            print("✅ BACKEND OPTIMIZATION COMPLETE")
+            self.solution = solution_data
+            self.waves_data = BackendHandler.parse_wave_information(solution_data)
+            self._backend_ready = True
+            
+            print(f"   Loaded {len(self.waves_data)} waves")
+            for i, wave in enumerate(self.waves_data, 1):
+                print(f"   Wave {i}: {wave['total_drones']} drones, {wave['total_trucks']} trucks")
+            print("\n   🚀 READY TO USE BACKEND OPTIMIZED ROUTES")
+            
+            # Close progress dialog
+            if hasattr(self, 'backend_progress'):
+                self.backend_progress.close()
+            
+            # Show success message
+            QMessageBox.information(
+                self,
+                "Backend Ready",
+                f"✅ Backend optimization complete!\n\n"
+                f"Waves: {len(self.waves_data)}\n"
+                f"Total vehicles: {sum(w['total_drones'] + w['total_trucks'] for w in self.waves_data)}\n\n"
+                f"Click 'Start Vehicles' to see optimized routes"
+            )
+            
+        else:
+            print("⚠️  BACKEND OPTIMIZATION FAILED OR INCOMPLETE")
+            print("   Will use frontend optimization as fallback")
+            self._backend_ready = False
+            
+            # Close progress dialog
+            if hasattr(self, 'backend_progress'):
+                self.backend_progress.close()
+            
+            # Show warning
+            reply = QMessageBox.warning(
+                self,
+                "Backend Unavailable",
+                "Backend optimization could not complete.\n\n"
+                "The system will use frontend route optimization instead.\n\n"
+                "Routes may not be as optimal as backend solution.\n\n"
+                "Continue?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            
+            if reply != QMessageBox.Yes:
+                self.close()
+                return
+        
+        print("="*70 + "\n")
+    
+    def on_backend_error(self, error_message):
+        """Handle backend error"""
+        print(f"❌ BACKEND ERROR: {error_message}")
+        
+        if hasattr(self, 'backend_progress'):
+            self.backend_progress.close()
+        
+        QMessageBox.critical(
+            self,
+            "Backend Error",
+            f"Backend processing failed:\n\n{error_message}\n\n"
+            f"The system will use frontend optimization instead."
+        )
+        
+        self._backend_ready = False
+    
+    def get_backend_folder_path(self):
+        """Get path to backend folder"""
+        current_file = os.path.abspath(__file__)
+        frontend_gui_dir = os.path.dirname(current_file)
+        frontend_dir = os.path.dirname(frontend_gui_dir)
+        project_root = os.path.dirname(frontend_dir)
+        return os.path.join(project_root, 'backend')
     
     def setup_timers(self):
         """Setup update timers"""
@@ -217,32 +413,6 @@ class IndiaAirspaceMap(QMainWindow):
         middle_layout.addWidget(self.map_view)
         
         return middle_widget
-    
-    def get_backend_folder_path(self):
-        """Get path to backend folder"""
-        current_file = os.path.abspath(__file__)
-        frontend_gui_dir = os.path.dirname(current_file)
-        frontend_dir = os.path.dirname(frontend_gui_dir)
-        project_root = os.path.dirname(frontend_dir)
-        return os.path.join(project_root, 'backend')
-    
-    def start_backend_processing(self):
-        """Start backend processing in background thread"""
-        self.backend_processor = BackendProcessorThread(self)
-        self.backend_processor.finished.connect(
-            lambda: print("✅ Backend processing complete")
-        )
-        self.backend_processor.error.connect(
-            lambda err: print(f"❌ Backend error: {err}")
-        )
-        self.backend_processor.timeout_signal.connect(
-            lambda: QMessageBox.warning(
-                self, 
-                "Backend Timeout",
-                "Backend processing timed out. Using default routing."
-            )
-        )
-        self.backend_processor.start()
     
     def on_map_ready(self, success):
         """Handle map ready event"""
@@ -356,19 +526,13 @@ class IndiaAirspaceMap(QMainWindow):
                 self.delivery_points
             )
         
-        # Start backend processing
-        self.start_backend_processing()
+        # Reset solution and restart backend processing
+        self.solution = None
+        self.waves_data = []
+        self._backend_ready = False
         
-        # Show confirmation
-        total_vehicles = electric_trucks + fuel_trucks + drones
-        QMessageBox.information(
-            self,
-            "Configuration Updated",
-            f"Depot: {lat:.6f}, {lng:.6f}\n"
-            f"Customers: {customer_count}\n"
-            f"Fleet: {total_vehicles} vehicles\n"
-            f"({electric_trucks}E + {fuel_trucks}F + {drones}D)"
-        )
+        # Restart backend processing
+        self.start_backend_processing_with_dialog()
     
     def update_status_bar(self):
         """Update status bar with current info"""
@@ -379,7 +543,10 @@ class IndiaAirspaceMap(QMainWindow):
             total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
             avg_deliveries = math.ceil(len(self.delivery_points) / max(1, total_vehicles))
             
+            backend_status = "✅ Backend Ready" if self._backend_ready else "⏳ Processing..."
+            
             status = (
+                f"{backend_status} | "
                 f"Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | "
                 f"Fleet: {total_vehicles} vehicles | "
                 f"Coverage: {len(self.delivery_points)} points (~{avg_deliveries} per vehicle)"
@@ -446,6 +613,14 @@ class IndiaAirspaceMap(QMainWindow):
                 self.map_update_timer.stop()
         except Exception as e:
             print(f"Error stopping timers: {e}")
+        
+        # Stop backend thread if running
+        try:
+            if hasattr(self, 'backend_thread') and self.backend_thread.isRunning():
+                self.backend_thread.quit()
+                self.backend_thread.wait(3000)
+        except Exception as e:
+            print(f"Error stopping backend thread: {e}")
         
         # Stop controllers
         try:

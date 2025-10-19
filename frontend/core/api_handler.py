@@ -855,7 +855,7 @@ def fetch_solution_and_render_map(output_path: str = "routes_map.html", open_in_
     Fetch solution and nodes from backend, build map via route_plotter and save HTML file.
     Returns the output file path.
     """
-    sol_resp = requests.get(f"{BACKEND_URL}/api/initial_solution", timeout=15)
+    sol_resp = requests.get(f"{BACKEND_URL}/api/solution", timeout=15)
     sol_resp.raise_for_status()
     solution = sol_resp.json()
 

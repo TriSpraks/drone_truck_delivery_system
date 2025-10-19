@@ -1,7 +1,7 @@
 """
-Backend communication module
+Backend communication module - FIXED with increased timeouts
 Handles all API calls to backend server
-Place this file in: frontend/gui/backend_handler.py
+FILE LOCATION: frontend/gui/backend_handler.py
 """
 import os
 import json
@@ -14,6 +14,38 @@ class BackendHandler:
     """Handles all backend API communication"""
     
     BASE_URL = "http://127.0.0.1:8000"
+    
+    @staticmethod
+    def calculate_timeout(num_nodes: int) -> int:
+        """
+        Calculate appropriate timeout based on number of nodes
+        
+        Args:
+            num_nodes: Number of customer nodes
+            
+        Returns:
+            Timeout in seconds
+            
+        Formula:
+        - Base: 60 seconds
+        - Per node: 10 seconds
+        - Minimum: 180 seconds (3 minutes)
+        - Maximum: 1800 seconds (30 minutes)
+        
+        Examples:
+        - 15 nodes: 60 + (15 * 10) = 210 seconds (3.5 min)
+        - 50 nodes: 60 + (50 * 10) = 560 seconds (9.3 min)
+        - 100 nodes: 60 + (100 * 10) = 1060 seconds (17.7 min)
+        """
+        base_timeout = 60
+        per_node_timeout = 10
+        calculated = base_timeout + (num_nodes * per_node_timeout)
+        
+        # Ensure minimum 3 minutes, maximum 30 minutes
+        timeout = max(180, min(calculated, 1800))
+        
+        print(f"📊 Calculated timeout for {num_nodes} nodes: {timeout}s ({timeout/60:.1f} minutes)")
+        return timeout
     
     @staticmethod
     async def insert_nodes(customer_nodes: List[Dict], 
@@ -64,15 +96,20 @@ class BackendHandler:
                 "vehicle_config": vehicle_config
             }
             
-            print(f"Inserting {len(nodes_list)} nodes to backend database...")
+            # Calculate dynamic timeout based on node count
+            num_nodes = len(customer_nodes)
+            timeout_seconds = BackendHandler.calculate_timeout(num_nodes)
             
-            # Send POST request to backend
+            print(f"Inserting {len(nodes_list)} nodes to backend database...")
+            print(f"⏱️  Timeout set to {timeout_seconds}s ({timeout_seconds/60:.1f} minutes)")
+            
+            # Send POST request to backend with DYNAMIC timeout
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{BackendHandler.BASE_URL}/api/nodes/insert",
                     json=nodes_data,
                     headers={"Content-Type": "application/json"},
-                    timeout=aiohttp.ClientTimeout(total=60)  # 60 second timeout
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)  # ← DYNAMIC timeout
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -88,7 +125,9 @@ class BackendHandler:
             print(f"❌ Network error inserting nodes: {e}")
             return False
         except asyncio.TimeoutError:
-            print(f"❌ Timeout error inserting nodes")
+            print(f"❌ Timeout error inserting nodes ({timeout_seconds}s limit)")
+            print(f"   Backend processing took longer than expected")
+            print(f"   Consider reducing the number of nodes or increasing timeout")
             return False
         except Exception as e:
             print(f"❌ Error inserting nodes: {e}")
@@ -136,7 +175,7 @@ class BackendHandler:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{BackendHandler.BASE_URL}/api/compute/distances",
-                    timeout=aiohttp.ClientTimeout(total=120)  # 2 minute timeout
+                    timeout=aiohttp.ClientTimeout(total=300)  # ← 5 minutes for distance computation
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -151,7 +190,7 @@ class BackendHandler:
             print(f"❌ Network error in distance computation: {e}")
             return False
         except asyncio.TimeoutError:
-            print(f"❌ Timeout in distance computation")
+            print(f"❌ Timeout in distance computation (300s limit)")
             return False
         except Exception as e:
             print(f"❌ Error in distance computation: {e}")
@@ -171,7 +210,7 @@ class BackendHandler:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{BackendHandler.BASE_URL}/api/compute/vehicle_matrix",
-                    timeout=aiohttp.ClientTimeout(total=120)
+                    timeout=aiohttp.ClientTimeout(total=300)  # ← 5 minutes
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
@@ -186,30 +225,30 @@ class BackendHandler:
             print(f"❌ Network error in vehicle matrix computation: {e}")
             return False
         except asyncio.TimeoutError:
-            print(f"❌ Timeout in vehicle matrix computation")
+            print(f"❌ Timeout in vehicle matrix computation (300s limit)")
             return False
         except Exception as e:
             print(f"❌ Error in vehicle matrix computation: {e}")
             return False
     
     @staticmethod
-    def load_initial_solution(backend_folder_path: str) -> Optional[Dict]:
+    def load_solution(backend_folder_path: str) -> Optional[Dict]:
         """
-        Load initial_solution.json from backend folder
+        Load solution.json from backend folder
         
         Args:
-            backend_folder_path: Path to backend folder containing initial_solution.json
+            backend_folder_path: Path to backend folder containing solution.json
         
         Returns:
             Dictionary with solution data or None if failed
         """
         try:
-            solution_file = os.path.join(backend_folder_path, 'initial_solution.json')
+            solution_file = os.path.join(backend_folder_path, 'solution.json')
             
-            print(f"Looking for initial_solution.json at: {solution_file}")
+            print(f"Looking for solution.json at: {solution_file}")
             
             if not os.path.exists(solution_file):
-                print(f"⚠️  Initial solution file not found at: {solution_file}")
+                print(f"⚠️  Solution file not found at: {solution_file}")
                 # Wait a bit longer in case backend is still writing
                 import time
                 time.sleep(2)
@@ -244,12 +283,12 @@ class BackendHandler:
             return None
     
     @staticmethod
-    def parse_wave_information(initial_solution: Dict) -> List[Dict]:
+    def parse_wave_information(solution: Dict) -> List[Dict]:
         """
         Parse wave information from backend solution
         
         Args:
-            initial_solution: Dictionary containing backend solution
+            solution: Dictionary containing backend solution
         
         Returns:
             List of wave dictionaries with structure:
@@ -268,7 +307,7 @@ class BackendHandler:
             waves_data = []
             
             # Filter out the 'summary' key - only process actual wave keys
-            for wave_key, wave_data in initial_solution.items():
+            for wave_key, wave_data in solution.items():
                 # Skip the summary key
                 if wave_key == 'summary':
                     continue
@@ -339,7 +378,7 @@ class BackendHandler:
             print("⏳ Waiting for backend to write solution file...")
             
             # Wait for backend to finish writing the solution file
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)  # ← Increased to 5 seconds
             
             return True
             
@@ -361,7 +400,7 @@ class BackendHandler:
             import requests
             response = requests.get(
                 f"{BackendHandler.BASE_URL}/health",
-                timeout=5
+                timeout=10  # ← Increased to 10 seconds
             )
             if response.status_code == 200:
                 return {
@@ -541,154 +580,3 @@ class BackendHandler:
         except Exception as e:
             print(f"❌ Error exporting solution: {e}")
             return False
-
-
-# Helper functions for common operations
-async def quick_backend_check() -> bool:
-    """
-    Quick check if backend is accessible
-    
-    Returns:
-        True if backend is online, False otherwise
-    """
-    return BackendHandler.validate_backend_connection()
-
-
-async def initialize_backend_with_data(customer_nodes: List[Dict], 
-                                      depot_node: Dict,
-                                      electric_trucks: int = 2,
-                                      fuel_trucks: int = 1,
-                                      drones: int = 3) -> Optional[Dict]:
-    """
-    Complete initialization: insert nodes and get solution
-    
-    Args:
-        customer_nodes: List of customer nodes
-        depot_node: Depot node
-        electric_trucks: Number of electric trucks
-        fuel_trucks: Number of fuel trucks
-        drones: Number of drones
-    
-    Returns:
-        Dictionary with solution data or None if failed
-    """
-    vehicle_config = {
-        "electric_trucks": electric_trucks,
-        "fuel_trucks": fuel_trucks,
-        "drones": drones
-    }
-    
-    # Process computations
-    success = await BackendHandler.process_all_computations(
-        customer_nodes,
-        depot_node,
-        vehicle_config
-    )
-    
-    if not success:
-        print("❌ Backend initialization failed")
-        return None
-    
-    # Get backend folder path
-    current_file = os.path.abspath(__file__)
-    frontend_gui_dir = os.path.dirname(current_file)
-    frontend_dir = os.path.dirname(frontend_gui_dir)
-    project_root = os.path.dirname(frontend_dir)
-    backend_folder = os.path.join(project_root, 'backend')
-    
-    # Load solution
-    solution = BackendHandler.load_initial_solution(backend_folder)
-    
-    if solution:
-        print("✅ Backend initialization complete with solution")
-        return solution
-    else:
-        print("⚠️  Backend initialized but no solution available yet")
-        return None
-
-
-# Example usage functions
-def example_usage():
-    """
-    Example usage of BackendHandler
-    """
-    import asyncio
-    
-    async def main():
-        # Check backend status
-        print("=== Checking Backend Status ===")
-        status = BackendHandler.get_backend_status()
-        print(f"Status: {status}")
-        
-        # Example customer nodes
-        customer_nodes = [
-            {
-                "node_id": "cust_1",
-                "weight": 2.5,
-                "volume": 5000,
-                "lon": 77.5946,
-                "lat": 12.9716
-            },
-            {
-                "node_id": "cust_2",
-                "weight": 150.0,
-                "volume": 300000,
-                "lon": 77.6046,
-                "lat": 12.9816
-            }
-        ]
-        
-        depot_node = {
-            "node_id": "depot",
-            "weight": 0,
-            "volume": 0,
-            "lon": 77.5846,
-            "lat": 12.9616
-        }
-        
-        vehicle_config = {
-            "electric_trucks": 2,
-            "fuel_trucks": 1,
-            "drones": 3
-        }
-        
-        # Process all computations
-        print("\n=== Processing Backend Computations ===")
-        success = await BackendHandler.process_all_computations(
-            customer_nodes,
-            depot_node,
-            vehicle_config
-        )
-        
-        if success:
-            print("\n=== Loading Solution ===")
-            # Assuming backend folder is at ../../backend
-            backend_folder = "../backend"
-            solution = BackendHandler.load_initial_solution(backend_folder)
-            
-            if solution:
-                waves = BackendHandler.parse_wave_information(solution)
-                summary = BackendHandler.get_wave_summary(waves)
-                print(f"\nSummary: {summary}")
-        else:
-            print("Backend processing failed")
-    
-    # Run async main
-    asyncio.run(main())
-
-
-if __name__ == "__main__":
-    print("Backend Handler Module")
-    print("=" * 50)
-    print("This module handles all backend API communication")
-    print("\nAvailable functions:")
-    print("  - insert_nodes()")
-    print("  - fetch_nodes()")
-    print("  - trigger_distance_computation()")
-    print("  - trigger_vehicle_matrix_computation()")
-    print("  - load_initial_solution()")
-    print("  - parse_wave_information()")
-    print("  - process_all_computations()")
-    print("  - get_backend_status()")
-    print("  - validate_backend_connection()")
-    print("\nRun example_usage() for a demonstration")

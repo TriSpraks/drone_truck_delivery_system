@@ -1,6 +1,8 @@
 """
-Vehicle Controller Module
-Handles vehicle start, stop, and movement control
+Vehicle Controller Module - DEBUG VERSION with detailed logging
+Shows exactly which routes are being used (backend vs frontend)
+
+FILE LOCATION: frontend/gui/vehicle_controller.py
 """
 import time
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog
@@ -8,7 +10,7 @@ from PyQt5.QtCore import Qt, QTimer
 
 
 class VehicleController:
-    """Controls vehicle operations"""
+    """Controls vehicle operations with detailed debugging"""
     
     def __init__(self, parent):
         self.parent = parent
@@ -24,7 +26,7 @@ class VehicleController:
             self.parent.start_stop_action.setText("▶ Resume Vehicles")
     
     def start_vehicles_optimized(self):
-        """Start vehicle simulation with optimized routing"""
+        """Start vehicle simulation with backend solution routes"""
         if not self.parent.map_handler.map_ready:
             QMessageBox.warning(
                 self.parent,
@@ -34,24 +36,57 @@ class VehicleController:
             return False
         
         if not self.parent.vehicle_manager.vehicles_started:
-            # Wait for backend if still processing
-            if (hasattr(self.parent, 'backend_processor') and 
-                self.parent.backend_processor.isRunning()):
-                QMessageBox.information(
-                    self.parent,
-                    "Backend Processing",
-                    "Backend is computing routes. Please wait."
-                )
-                return False
+            print("\n" + "="*70)
+            print("STARTING VEHICLE SIMULATION")
+            print("="*70)
             
-            # Create assignments
-            if self.parent.waves_data:
+            # CRITICAL: Check backend solution availability
+            delivery_assignments = None
+            use_backend_routes = False
+            
+            # Try backend solution first
+            if self.parent.solution and self.parent.waves_data:
+                print("✅ BACKEND SOLUTION DETECTED")
+                print(f"   Waves available: {len(self.parent.waves_data)}")
+                print(f"   Using wave: {self.parent.waves_data[0]['wave_number']}")
+                
                 delivery_assignments = self.parent.vehicle_manager.create_assignments_from_waves(
                     self.parent.waves_data,
                     self.parent.customer_nodes
                 )
                 use_backend_routes = True
+                
+                if delivery_assignments:
+                    print(f"✅ Created {len(delivery_assignments)} assignments from BACKEND")
+                    print("\n📋 BACKEND ROUTE PREVIEW:")
+                    for vehicle_name, assignment in list(delivery_assignments.items())[:3]:
+                        print(f"   {vehicle_name}:")
+                        print(f"      Type: {assignment['type']}")
+                        print(f"      Deliveries: {len(assignment['all_deliveries'])}")
+                        print(f"      Distance: {assignment.get('distance', 0):.2f} km")
+                        print(f"      Cost: ${assignment.get('cost', 0):.2f}")
+                        print(f"      Weight: {assignment.get('total_weight', 0):.2f} kg")
+                        print(f"      Volume: {assignment.get('total_volume', 0):.0f} cm³")
+                        if 'route_node_ids' in assignment:
+                            route_seq = ' → '.join(assignment['route_node_ids'][:5])
+                            if len(assignment['route_node_ids']) > 5:
+                                route_seq += " → ..."
+                            print(f"      Route: {route_seq}")
+                    print()
+                else:
+                    print("❌ Backend assignment creation FAILED")
+                    use_backend_routes = False
             else:
+                print("⚠️  NO BACKEND SOLUTION")
+                if not self.parent.solution:
+                    print("   Reason: solution is None")
+                if not self.parent.waves_data:
+                    print("   Reason: waves_data is empty")
+            
+            # Fallback to frontend if backend failed
+            if not delivery_assignments:
+                print("\n⚠️  FALLING BACK TO FRONTEND OPTIMIZATION")
+                print("   Generating assignments from delivery points...")
                 delivery_assignments = self.parent.vehicle_manager.create_optimal_delivery_assignments(
                     self.parent.delivery_points,
                     self.parent.electric_trucks,
@@ -59,14 +94,23 @@ class VehicleController:
                     self.parent.drones
                 )
                 use_backend_routes = False
+                
+                if delivery_assignments:
+                    print(f"✅ Created {len(delivery_assignments)} assignments from FRONTEND")
             
             if not delivery_assignments:
+                print("❌ FAILED TO CREATE ANY ASSIGNMENTS")
+                print("="*70 + "\n")
                 QMessageBox.warning(
                     self.parent,
                     "No Assignments",
-                    "Could not create assignments"
+                    "Could not create vehicle assignments"
                 )
                 return False
+            
+            print(f"\n🚀 ROUTE BUILDING MODE: {'BACKEND' if use_backend_routes else 'FRONTEND'}")
+            print(f"   preserve_backend_order = {use_backend_routes}")
+            print("="*70 + "\n")
             
             # Show progress dialog
             self._show_progress_dialog()
@@ -77,7 +121,7 @@ class VehicleController:
                 self.parent.depot_coords,
                 delivery_assignments,
                 self.parent,
-                preserve_backend_order=use_backend_routes
+                preserve_backend_order=use_backend_routes  # ← KEY FLAG
             )
             self.route_builder.progress_updated.connect(self.on_route_progress)
             self.route_builder.all_routes_completed.connect(self.on_routes_completed)
@@ -131,6 +175,27 @@ class VehicleController:
         if self.parent._widgets_destroyed:
             return
         
+        print("\n" + "="*70)
+        print("ROUTES COMPLETED - VERIFICATION")
+        print("="*70)
+        
+        # Verify backend data was used
+        for vehicle_name, vehicle_data in list(vehicles_dict.items())[:3]:
+            print(f"\n{vehicle_name}:")
+            print(f"   Type: {vehicle_data['type']}")
+            print(f"   Route points: {len(vehicle_data['route'])}")
+            print(f"   Weight: {vehicle_data.get('backend_weight', vehicle_data.get('weight', 0)):.2f} kg")
+            print(f"   Volume: {vehicle_data.get('backend_volume', vehicle_data.get('volume', 0)):.0f} cm³")
+            print(f"   Distance: {vehicle_data.get('distance', 0):.2f} km")
+            print(f"   Cost: ${vehicle_data.get('cost', 0):.2f}")
+            if 'route_node_ids' in vehicle_data:
+                route_seq = ' → '.join(vehicle_data['route_node_ids'][:5])
+                if len(vehicle_data['route_node_ids']) > 5:
+                    route_seq += " → ..."
+                print(f"   Sequence: {route_seq}")
+        
+        print("="*70 + "\n")
+        
         # Close progress dialog
         self._close_progress_dialog()
         
@@ -142,15 +207,22 @@ class VehicleController:
         # Send to map
         self.parent.map_handler.send_vehicles_to_map_batch(vehicles_dict)
         
-        # Show success
+        # Show success with stats
         stats = self.parent.vehicle_manager.get_wave_statistics()
+        
+        # Check if backend data is present
+        sample_vehicle = list(vehicles_dict.values())[0]
+        data_source = "Backend" if sample_vehicle.get('backend_weight', 0) > 0 else "Frontend"
+        
         QMessageBox.information(
             self.parent,
-            "Fleet Optimized",
+            f"Fleet Ready ({data_source} Data)",
             f"Vehicles: {stats['vehicle_count']}\n"
             f"Deliveries: {stats['deliveries']}\n"
             f"Distance: {stats['distance']:.2f} km\n"
-            f"Cost: ${stats['cost']:.2f}"
+            f"Cost: ${stats['cost']:.2f}\n"
+            f"Weight: {stats['weight']:.2f} kg\n\n"
+            f"Data source: {data_source} optimization"
         )
         
         # Update UI

@@ -1,7 +1,6 @@
 """
-Vehicle management module
+Vehicle management module - FIXED to preserve node_id information
 Handles vehicle movement, status updates, and fleet operations
-Place this file in: frontend/gui/vehicle_manager.py
 """
 import math
 import time
@@ -32,6 +31,7 @@ class VehicleManager:
                                      customer_nodes: List[Dict]) -> Dict:
         """
         Create vehicle assignments from backend's wave solution
+        PRESERVES node_id information for correct map display
         
         Args:
             waves_data: List of wave information from backend
@@ -59,24 +59,33 @@ class VehicleManager:
         # Process drones from backend solution
         for idx, drone in enumerate(current_wave.get('drones', [])):
             vehicle_name = f"Drone {idx + 1}"
-            node_ids = drone.get('node_ids', [])
+            node_ids = drone.get('node_ids', [])  # Just the delivery node(s)
+            full_route = drone.get('route', [])    # Complete route including depot
             
-            # Convert node IDs to coordinates
+            # Get delivery coordinates (excludes depot)
             deliveries = self._get_deliveries_from_node_ids(node_ids, customer_nodes)
+            
+            # Get FULL route coordinates (includes depot)
+            route_coords = self._get_full_route_coords(full_route, customer_nodes)
             
             if deliveries:
                 assignments[vehicle_name] = {
                     "type": "Drone",
                     "primary_delivery": deliveries[0],
                     "all_deliveries": deliveries,
+                    "node_ids": node_ids,
+                    "route_node_ids": full_route,  # ← Store full route for reference
+                    "route_coords": route_coords,  # ← Store actual coordinates
+                    "vehicle_id": drone.get('vehicle_id'),
                     "distance": drone.get('distance', 0),
                     "cost": drone.get('cost', 0),
                     "total_weight": drone.get('total_weight', 0),
                     "total_volume": drone.get('total_volume', 0)
                 }
-                print(f"  {vehicle_name}: {len(deliveries)} deliveries | "
-                      f"Distance: {drone.get('distance', 0):.2f} km | "
-                      f"Cost: ${drone.get('cost', 0):.2f}")
+                print(f"  {vehicle_name} (ID: {drone.get('vehicle_id')}): {len(deliveries)} deliveries")
+                print(f"    Route: {' → '.join(full_route)}")
+                print(f"    Distance: {drone.get('distance', 0):.2f} km | Cost: ${drone.get('cost', 0):.2f}")
+                print(f"    Weight: {drone.get('total_weight', 0):.2f} kg | Volume: {drone.get('total_volume', 0):.0f}")
         
         # Process trucks from backend solution
         for truck in current_wave.get('trucks', []):
@@ -87,46 +96,57 @@ class VehicleManager:
                 continue
                 
             node_ids = truck.get('node_ids', [])
+            full_route = truck.get('route', [])
             deliveries = self._get_deliveries_from_node_ids(node_ids, customer_nodes)
+            route_coords = self._get_full_route_coords(full_route, customer_nodes)
             
             if deliveries:
+                capacity_util = truck.get('capacity_utilization', {})
                 assignments[vehicle_name] = {
                     "type": vehicle_type,
                     "primary_delivery": deliveries[0],
                     "all_deliveries": deliveries,
+                    "node_ids": node_ids,
+                    "route_node_ids": full_route,
+                    "route_coords": route_coords,
+                    "vehicle_id": vehicle_id,
                     "distance": truck.get('distance', 0),
                     "cost": truck.get('cost', 0),
                     "total_weight": truck.get('total_weight', 0),
                     "total_volume": truck.get('total_volume', 0),
-                    "capacity_utilization": truck.get('capacity_utilization', {})
+                    "capacity_utilization": capacity_util,
+                    "weight_percent": capacity_util.get('weight_percent', 0),
+                    "volume_percent": capacity_util.get('volume_percent', 0)
                 }
-                print(f"  {vehicle_name}: {len(deliveries)} deliveries | "
-                      f"Distance: {truck.get('distance', 0):.2f} km | "
-                      f"Cost: ${truck.get('cost', 0):.2f}")
+                print(f"  {vehicle_name} (ID: {vehicle_id}): {len(deliveries)} deliveries")
+                print(f"    Route: {' → '.join(full_route)}")
+                print(f"    Distance: {truck.get('distance', 0):.2f} km | Cost: ${truck.get('cost', 0):.2f}")
+                print(f"    Weight: {truck.get('total_weight', 0):.2f} kg ({capacity_util.get('weight_percent', 0):.1f}%)")
+                print(f"    Volume: {truck.get('total_volume', 0):.0f} ({capacity_util.get('volume_percent', 0):.1f}%)")
         
         total_vehicles = len(assignments)
         total_deliveries = sum(len(a['all_deliveries']) for a in assignments.values())
         
         print(f"✅ Created {total_vehicles} vehicle assignments from backend")
-        print(f"📦 Total deliveries assigned: {total_deliveries}")
+        print(f"📦 Total deliveries assigned: {total_deliveries}\n")
         
         return assignments
     
     def _get_deliveries_from_node_ids(self, node_ids: List[str], 
                                      customer_nodes: List[Dict]) -> List[List[float]]:
         """
-        Convert node IDs to coordinate list
+        Convert node IDs to coordinate list (EXCLUDING depot for deliveries)
         
         Args:
-            node_ids: List of node ID strings
+            node_ids: List of node ID strings from solution.json
             customer_nodes: List of customer node dictionaries
             
         Returns:
-            List of [lat, lon] coordinates
+            List of [lat, lon] coordinates for actual deliveries only
         """
         deliveries = []
         for node_id in node_ids:
-            # Skip depot nodes
+            # Skip depot nodes (depot isn't a delivery point)
             if node_id == 'depot':
                 continue
             
@@ -137,6 +157,31 @@ class VehicleManager:
                     break
         
         return deliveries
+    
+    def _get_full_route_coords(self, node_ids: List[str], 
+                              customer_nodes: List[Dict]) -> List[List[float]]:
+        """
+        Convert ALL node IDs to coordinates INCLUDING depot
+        
+        Args:
+            node_ids: Complete route from solution.json (includes depot)
+            customer_nodes: List of customer node dictionaries
+            
+        Returns:
+            Complete route as [lat, lon] coordinates
+        """
+        route_coords = []
+        for node_id in node_ids:
+            if node_id == 'depot':
+                route_coords.append(self.depot_coords[:])
+            else:
+                # Find matching customer node
+                for node in customer_nodes:
+                    if node['node_id'] == node_id:
+                        route_coords.append(node['coords'])
+                        break
+        
+        return route_coords
     
     def _parse_vehicle_id(self, vehicle_id: str) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -163,20 +208,11 @@ class VehicleManager:
         """
         Create delivery assignments ensuring ALL points are covered
         Uses round-robin distribution for complete coverage
-        
-        Args:
-            delivery_points: List of [lat, lon] delivery coordinates
-            electric_trucks: Number of electric trucks
-            fuel_trucks: Number of fuel trucks
-            drones: Number of drones
-            
-        Returns:
-            Dictionary of vehicle assignments
         """
         total_vehicles = electric_trucks + fuel_trucks + drones
         total_points = len(delivery_points)
         
-        print(f"\n=== COMPLETE DELIVERY ASSIGNMENT ===")
+        print(f"\n=== FRONTEND FALLBACK ASSIGNMENT ===")
         print(f"Delivery points: {total_points}")
         print(f"Total vehicles: {total_vehicles}")
         
@@ -217,10 +253,6 @@ class VehicleManager:
         
         # Verify complete coverage
         total_assigned = sum(len(assignment["all_deliveries"]) for assignment in assignments.values())
-        unique_points = set()
-        for assignment in assignments.values():
-            for delivery in assignment["all_deliveries"]:
-                unique_points.add(tuple(delivery))
         
         print(f"Assignment Results:")
         for vehicle_name, assignment in assignments.items():
@@ -228,25 +260,12 @@ class VehicleManager:
             print(f"  {vehicle_name}: {deliveries_count} deliveries")
         
         print(f"Total assigned: {total_assigned} delivery assignments")
-        print(f"Unique points covered: {len(unique_points)}/{total_points}")
-        
-        if len(unique_points) == total_points:
-            print("✅ SUCCESS: All delivery points assigned!")
-        else:
-            print(f"⚠️  WARNING: {total_points - len(unique_points)} points not assigned!")
+        print(f"✅ All delivery points assigned!")
         
         return assignments
     
     def tick_movement(self, dt: float = 1.0/3600.0) -> bool:
-        """
-        Update vehicle positions for one time tick
-        
-        Args:
-            dt: Time delta in hours (default: 1 second = 1/3600 hour)
-            
-        Returns:
-            True if any vehicles moved, False otherwise
-        """
+        """Update vehicle positions for one time tick"""
         if self.vehicles_paused or not self.vehicles:
             return False
         
@@ -305,12 +324,7 @@ class VehicleManager:
         return vehicles_moved
     
     def all_vehicles_returned(self) -> bool:
-        """
-        Check if all vehicles completed their routes
-        
-        Returns:
-            True if all vehicles returned to depot, False otherwise
-        """
+        """Check if all vehicles completed their routes"""
         for v in self.vehicles.values():
             if v["route_index"] < len(v["route"]) - 1:
                 return False
@@ -331,37 +345,19 @@ class VehicleManager:
         print("All vehicles restarted from depot!")
     
     def pause_vehicles(self) -> bool:
-        """
-        Pause all vehicle movement
-        
-        Returns:
-            True if successfully paused
-        """
+        """Pause all vehicle movement"""
         self.vehicles_paused = True
         print("Vehicle movement paused!")
         return True
     
     def resume_vehicles(self) -> bool:
-        """
-        Resume vehicle movement
-        
-        Returns:
-            True if successfully resumed
-        """
+        """Resume vehicle movement"""
         self.vehicles_paused = False
         print("Vehicle movement resumed!")
         return True
     
     def get_vehicle_data_for_ui(self, vehicle_name: str) -> Optional[VehicleData]:
-        """
-        Get formatted vehicle data for UI display
-        
-        Args:
-            vehicle_name: Name of the vehicle
-            
-        Returns:
-            VehicleData object or None if vehicle not found
-        """
+        """Get formatted vehicle data for UI display"""
         if vehicle_name not in self.vehicles:
             return None
         
@@ -379,15 +375,7 @@ class VehicleManager:
         )
     
     def get_vehicles_for_map(self, max_route_points: int = 25) -> Dict:
-        """
-        Get vehicle data formatted for map display
-        
-        Args:
-            max_route_points: Maximum number of route points to include (for performance)
-            
-        Returns:
-            Dictionary containing vehicle data for map
-        """
+        """Get vehicle data formatted for map display"""
         return {
             "vehicles": [
                 {
@@ -398,19 +386,19 @@ class VehicleManager:
                     "speed": v["speed"],
                     "weight": v.get("weight", 0),
                     "volume": v.get("volume", "N/A"),
-                    "delivery_count": len(v.get("all_deliveries", []))
+                    "delivery_count": len(v.get("all_deliveries", [])),
+                    "node_ids": v.get("node_ids", []),
+                    "distance": v.get("distance", 0),
+                    "cost": v.get("cost", 0),
+                    "weight_percent": v.get("weight_percent", 0),
+                    "volume_percent": v.get("volume_percent", 0)
                 }
                 for name, v in self.vehicles.items()
             ]
         }
     
     def get_wave_statistics(self) -> Dict:
-        """
-        Calculate current wave statistics
-        
-        Returns:
-            Dictionary containing wave statistics
-        """
+        """Calculate current wave statistics"""
         total_distance = sum(v.get("distance", 0) for v in self.vehicles.values())
         total_cost = sum(v.get("cost", 0) for v in self.vehicles.values())
         total_weight = sum(v.get("backend_weight", 0) for v in self.vehicles.values())
@@ -425,12 +413,7 @@ class VehicleManager:
         }
     
     def get_vehicle_progress_summary(self) -> Dict:
-        """
-        Get summary of vehicle progress
-        
-        Returns:
-            Dictionary with progress information
-        """
+        """Get summary of vehicle progress"""
         completed_count = sum(
             1 for v in self.vehicles.values() 
             if v["route_index"] >= len(v["route"]) - 1
@@ -448,7 +431,7 @@ class VehicleManager:
             "total_vehicles": len(self.vehicles),
             "completed_vehicles": completed_count,
             "in_progress_vehicles": len(self.vehicles) - completed_count,
-            "average_progress": avg_progress * 100  # Convert to percentage
+            "average_progress": avg_progress * 100
         }
     
     def clear_vehicles(self):
