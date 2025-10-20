@@ -1,464 +1,536 @@
 """
-Analytics Dashboard Widget - PyQt5 Implementation
-Displays delivery performance analytics from solution.json
-
-FILE LOCATION: frontend/widgets/analytics_dashboard.py
+Analytics Dashboard Widget - LOADS LIVE SOLUTION.JSON FROM BACKEND
+Displays all feasible delivery performance analytics graphs
 """
 import os
 import json
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
-                           QPushButton, QLabel, QTabWidget, QGroupBox, QGridLayout)
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
+                            QScrollArea, QGroupBox)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-import pyqtgraph as pg
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 
 class AnalyticsDashboard(QWidget):
-    """Display delivery performance analytics"""
+    """Display delivery performance analytics from backend solution.json"""
     
-    data_refreshed = pyqtSignal()
+    data_updated = pyqtSignal(dict)
     
     def __init__(self, parent=None):
         super().__init__()
         self.parent_window = parent
         self.current_solution = None
-        self.current_wave = None
+        self.last_solution_hash = None
         self._widget_destroyed = False
         
         self.init_ui()
         
-        # Auto-refresh timer
+        # Setup continuous polling for solution.json updates
         self.refresh_timer = QTimer()
-        self.refresh_timer.timeout.connect(self.auto_refresh_data)
-        self.refresh_timer.start(3000)  # Refresh every 3 seconds
+        self.refresh_timer.timeout.connect(self.periodic_check_solution)
+        self.refresh_timer.start(2000)  # Check every 2 seconds
         
         # Initial load
-        QTimer.singleShot(500, self.load_solution_data)
+        QTimer.singleShot(1000, self.load_solution_data)
     
     def init_ui(self):
-        """Initialize UI with tabs"""
+        """Initialize analytics UI"""
         try:
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(5)
+            layout.setSpacing(0)
             
-            # Create tab widget
-            self.tabs = QTabWidget()
-            self.tabs.setStyleSheet("""
-                QTabWidget::pane { border: none; }
-                QTabBar::tab {
-                    background-color: #2a2a2a;
-                    color: #cccccc;
-                    padding: 8px 15px;
-                    margin-right: 2px;
-                    border: 1px solid #404040;
+            # Create scrollable area
+            scroll_area = QScrollArea()
+            scroll_area.setWidgetResizable(True)
+            scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            scroll_area.setStyleSheet("""
+                QScrollArea {
+                    background-color: #1a1a1a;
+                    border: none;
                 }
-                QTabBar::tab:selected {
-                    background-color: #ff6b35;
-                    color: white;
-                    border: 1px solid #ff6b35;
+                QScrollBar:vertical {
+                    width: 10px;
+                    background: #1a1a1a;
+                    margin: 0px;
                 }
-                QTabBar::tab:hover {
-                    background-color: #3a3a3a;
+                QScrollBar::handle:vertical {
+                    background: #555555;
+                    border-radius: 5px;
+                    min-height: 20px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background: #777777;
+                }
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                    border: none;
+                    background: none;
                 }
             """)
             
-            # Tab 1: Cost Analysis
-            cost_tab = self.create_cost_tab()
-            self.tabs.addTab(cost_tab, "💰 Cost")
+            # Container widget
+            self.container = QWidget()
+            self.container_layout = QVBoxLayout(self.container)
+            self.container_layout.setContentsMargins(10, 10, 10, 10)
+            self.container_layout.setSpacing(20)
             
-            # Tab 2: Distance Analysis
-            distance_tab = self.create_distance_tab()
-            self.tabs.addTab(distance_tab, "📍 Distance")
-            
-            # Tab 3: Capacity
-            capacity_tab = self.create_capacity_tab()
-            self.tabs.addTab(capacity_tab, "📦 Capacity")
-            
-            # Tab 4: Summary
-            summary_tab = self.create_summary_tab()
-            self.tabs.addTab(summary_tab, "📋 Summary")
-            
-            layout.addWidget(self.tabs)
+            scroll_area.setWidget(self.container)
+            layout.addWidget(scroll_area)
             
         except Exception as e:
-            print(f"Error initializing analytics UI: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Error initializing AnalyticsDashboard UI: {e}")
             self._widget_destroyed = True
     
-    def create_cost_tab(self):
-        """Create cost analysis tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        # Title
-        title = QLabel("Average Cost per Delivery")
-        title.setStyleSheet("color: #ff6b35; font-weight: bold; font-size: 14px; padding: 5px;")
-        layout.addWidget(title)
-        
-        # Plot widget
-        self.cost_plot = pg.PlotWidget()
-        self.cost_plot.setBackground('#1a1a1a')
-        self.cost_plot.setLabel('left', 'Cost ($)', color='#aaa')
-        self.cost_plot.setLabel('bottom', 'Vehicle', color='#aaa')
-        self.cost_plot.setTitle("Average Cost per Delivery by Vehicle", color='#aaa')
-        self.cost_plot.getAxis('left').setPen(pg.mkPen('#555'))
-        self.cost_plot.getAxis('bottom').setPen(pg.mkPen('#555'))
-        layout.addWidget(self.cost_plot)
-        
-        # Stats
-        self.cost_stats = QLabel("Loading...")
-        self.cost_stats.setStyleSheet("color: #cccccc; font-size: 11px; padding: 10px;")
-        layout.addWidget(self.cost_stats)
-        
-        return widget
+    def get_backend_folder_path(self):
+        """Get backend folder path"""
+        try:
+            if self.parent_window:
+                return self.parent_window.get_backend_folder_path()
+            
+            current_file = os.path.abspath(__file__)
+            widgets_dir = os.path.dirname(current_file)
+            frontend_dir = os.path.dirname(widgets_dir)
+            project_root = os.path.dirname(frontend_dir)
+            return os.path.join(project_root, 'backend')
+        except Exception as e:
+            return None
     
-    def create_distance_tab(self):
-        """Create distance analysis tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
+    def periodic_check_solution(self):
+        """Continuously check for updated solution.json"""
+        if self._widget_destroyed:
+            return
         
-        # Title
-        title = QLabel("Average Distance per Delivery")
-        title.setStyleSheet("color: #ff6b35; font-weight: bold; font-size: 14px; padding: 5px;")
-        layout.addWidget(title)
-        
-        # Plot widget
-        self.distance_plot = pg.PlotWidget()
-        self.distance_plot.setBackground('#1a1a1a')
-        self.distance_plot.setLabel('left', 'Distance (km)', color='#aaa')
-        self.distance_plot.setLabel('bottom', 'Vehicle', color='#aaa')
-        self.distance_plot.setTitle("Average Distance per Delivery by Vehicle", color='#aaa')
-        self.distance_plot.getAxis('left').setPen(pg.mkPen('#555'))
-        self.distance_plot.getAxis('bottom').setPen(pg.mkPen('#555'))
-        layout.addWidget(self.distance_plot)
-        
-        # Stats
-        self.distance_stats = QLabel("Loading...")
-        self.distance_stats.setStyleSheet("color: #cccccc; font-size: 11px; padding: 10px;")
-        layout.addWidget(self.distance_stats)
-        
-        return widget
-    
-    def create_capacity_tab(self):
-        """Create capacity utilization tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        # Title
-        title = QLabel("Truck Capacity Utilization")
-        title.setStyleSheet("color: #ff6b35; font-weight: bold; font-size: 14px; padding: 5px;")
-        layout.addWidget(title)
-        
-        # Plot widget
-        self.capacity_plot = pg.PlotWidget()
-        self.capacity_plot.setBackground('#1a1a1a')
-        self.capacity_plot.setLabel('left', 'Utilization (%)', color='#aaa')
-        self.capacity_plot.setLabel('bottom', 'Vehicle', color='#aaa')
-        self.capacity_plot.setTitle("Weight & Volume Utilization", color='#aaa')
-        self.capacity_plot.getAxis('left').setPen(pg.mkPen('#555'))
-        self.capacity_plot.getAxis('bottom').setPen(pg.mkPen('#555'))
-        layout.addWidget(self.capacity_plot)
-        
-        # Stats
-        self.capacity_stats = QLabel("Loading...")
-        self.capacity_stats.setStyleSheet("color: #cccccc; font-size: 11px; padding: 10px;")
-        layout.addWidget(self.capacity_stats)
-        
-        return widget
-    
-    def create_summary_tab(self):
-        """Create summary statistics tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        # Scrollable summary
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("""
-            QScrollArea { background: transparent; border: none; }
-            QScrollBar:vertical { width: 10px; background: #2a2a2a; }
-            QScrollBar::handle:vertical { background: #555; border-radius: 5px; }
-        """)
-        
-        summary_widget = QWidget()
-        summary_layout = QVBoxLayout(summary_widget)
-        
-        # Overall metrics
-        overall_group = QGroupBox("Overall Metrics")
-        overall_group.setStyleSheet("""
-            QGroupBox {
-                color: #ff6b35;
-                border: 1px solid #ff6b35;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
-        overall_layout = QGridLayout(overall_group)
-        
-        self.summary_total_points = QLabel("Total Deliveries: 0")
-        self.summary_total_dist = QLabel("Total Distance: 0.0 km")
-        self.summary_total_cost = QLabel("Total Cost: $0.00")
-        self.summary_total_weight = QLabel("Total Weight: 0.0 kg")
-        
-        for label in [self.summary_total_points, self.summary_total_dist, 
-                      self.summary_total_cost, self.summary_total_weight]:
-            label.setStyleSheet("color: #cccccc; padding: 5px;")
-        
-        overall_layout.addWidget(self.summary_total_points, 0, 0)
-        overall_layout.addWidget(self.summary_total_dist, 0, 1)
-        overall_layout.addWidget(self.summary_total_cost, 1, 0)
-        overall_layout.addWidget(self.summary_total_weight, 1, 1)
-        
-        summary_layout.addWidget(overall_group)
-        
-        # Vehicle breakdown
-        vehicle_group = QGroupBox("Vehicle Type Breakdown")
-        vehicle_group.setStyleSheet("""
-            QGroupBox {
-                color: #ff6b35;
-                border: 1px solid #ff6b35;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
-        vehicle_layout = QVBoxLayout(vehicle_group)
-        
-        self.summary_vehicles = QLabel("Loading...")
-        self.summary_vehicles.setStyleSheet("color: #cccccc; font-size: 11px; padding: 5px;")
-        self.summary_vehicles.setWordWrap(True)
-        vehicle_layout.addWidget(self.summary_vehicles)
-        
-        summary_layout.addWidget(vehicle_group)
-        summary_layout.addStretch()
-        
-        scroll.setWidget(summary_widget)
-        layout.addWidget(scroll)
-        
-        return widget
+        try:
+            solution = self._load_solution_file()
+            if solution:
+                solution_str = json.dumps(solution, sort_keys=True)
+                solution_hash = hash(solution_str)
+                
+                if solution_hash != self.last_solution_hash:
+                    self.last_solution_hash = solution_hash
+                    self.current_solution = solution
+                    self.refresh_all_graphs()
+        except Exception as e:
+            pass  # Silent fail for polling
     
     def load_solution_data(self):
-        """Load solution data from file or parent"""
+        """Load solution.json from backend folder"""
         try:
-            solution = None
+            if self._widget_destroyed:
+                return
             
-            # Try parent first
-            if self.parent_window and hasattr(self.parent_window, 'solution'):
-                solution = self.parent_window.solution
-            
-            # Try file
-            if not solution:
-                backend_folder = self.get_backend_folder()
-                if backend_folder:
-                    solution_file = os.path.join(backend_folder, 'solution.json')
-                    if os.path.exists(solution_file):
-                        with open(solution_file, 'r') as f:
-                            solution = json.load(f)
+            solution = self._load_solution_file()
             
             if solution:
                 self.current_solution = solution
-                waves = solution.get('waves', [])
-                if not waves and any(k.startswith('wave_') for k in solution.keys()):
-                    waves = [solution[k] for k in sorted([k for k in solution.keys() if k.startswith('wave_')])]
-                
-                if waves:
-                    self.current_wave = waves[0]
-                    self.update_all_charts()
+                self.last_solution_hash = hash(json.dumps(solution, sort_keys=True))
+                self.refresh_all_graphs()
+            else:
+                self.show_waiting_message()
         except Exception as e:
-            print(f"Error loading solution data: {e}")
+            print(f"[AnalyticsDashboard] Error loading solution: {e}")
+            self.show_waiting_message()
     
-    def auto_refresh_data(self):
-        """Periodically refresh data"""
-        if not self._widget_destroyed:
-            self.load_solution_data()
+    def _load_solution_file(self):
+        """Load solution.json from backend folder"""
+        try:
+            backend_folder = self.get_backend_folder_path()
+            if not backend_folder:
+                return None
+            
+            solution_file = os.path.join(backend_folder, 'solution.json')
+            if os.path.exists(solution_file):
+                with open(solution_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"[AnalyticsDashboard] Error reading solution file: {e}")
+        
+        return None
+    
+    def refresh_all_graphs(self):
+        """Refresh all analytics graphs"""
+        try:
+            if not self.current_solution or self._widget_destroyed:
+                return
+            
+            # Clear existing graphs safely
+            while self.container_layout.count():
+                item = self.container_layout.takeAt(0)
+                if item and item.widget():
+                    item.widget().deleteLater()
+            
+            # Build analytics data
+            analytics = self._process_analytics()
+            
+            # Create graph sections
+            self._create_efficiency_section(analytics)
+            self._create_wave_metrics_section(analytics)
+            self._create_distribution_section(analytics)
+            self._create_summary_section(analytics)
+            
+            # Add stretch
+            self.container_layout.addStretch()
+            
+            print("[AnalyticsDashboard] All graphs refreshed successfully")
+            
+        except Exception as e:
+            print(f"[AnalyticsDashboard] Error refreshing graphs: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _process_analytics(self):
+        """Process solution data into analytics"""
+        solution = self.current_solution
+        analytics = {
+            'efficiency': {},
+            'waves': {},
+            'summary': {}
+        }
+        
+        try:
+            # Process efficiency metrics
+            all_routes = []
+            
+            # Collect all wave data
+            waves_list = self._get_waves_list(solution)
+            
+            for wave in waves_list:
+                # Process drones
+                for drone in wave.get('drones', []):
+                    all_routes.append({
+                        'type': 'Drone',
+                        'vehicle': drone.get('vehicle_id', 'Unknown'),
+                        'nodes': len(drone.get('node_ids', [])),
+                        'distance': float(drone.get('distance', 0)),
+                        'cost': float(drone.get('cost', 0)),
+                        'weight': float(drone.get('total_weight', 0)),
+                        'volume': float(drone.get('total_volume', 0))
+                    })
+                
+                # Process trucks
+                for truck in wave.get('trucks', []):
+                    vehicle_id = truck.get('vehicle_id', 'Unknown')
+                    is_electric = 'E_Truck' in vehicle_id or 'electric' in vehicle_id.lower()
+                    
+                    all_routes.append({
+                        'type': 'E-Truck' if is_electric else 'F-Truck',
+                        'vehicle': vehicle_id,
+                        'nodes': len(truck.get('node_ids', [])),
+                        'distance': float(truck.get('distance', 0)),
+                        'cost': float(truck.get('cost', 0)),
+                        'weight': float(truck.get('total_weight', 0)),
+                        'volume': float(truck.get('total_volume', 0)),
+                        'weight_util': truck.get('capacity_utilization', {}).get('weight_percent', 0),
+                        'volume_util': truck.get('capacity_utilization', {}).get('volume_percent', 0)
+                    })
+            
+            analytics['efficiency']['all_routes'] = all_routes
+            
+            # Calculate averages by type
+            for vehicle_type in ['Drone', 'E-Truck', 'F-Truck']:
+                routes = [r for r in all_routes if r['type'] == vehicle_type]
+                if routes:
+                    analytics['efficiency'][vehicle_type] = {
+                        'count': len(routes),
+                        'avg_cost_per_node': sum(r['cost'] / max(1, r['nodes']) for r in routes) / len(routes),
+                        'avg_distance_per_node': sum(r['distance'] / max(1, r['nodes']) for r in routes) / len(routes),
+                        'total_distance': sum(r['distance'] for r in routes),
+                        'total_cost': sum(r['cost'] for r in routes)
+                    }
+            
+            # Wave breakdown
+            waves_summary = solution.get('summary', {}).get('wave_breakdown', {})
+            for wave_key, wave_data in waves_summary.items():
+                analytics['waves'][wave_key] = {
+                    'distance': wave_data.get('total_distance', 0),
+                    'cost': wave_data.get('total_cost', 0),
+                    'nodes': wave_data.get('nodes_assigned', 0),
+                    'drones': wave_data.get('drone_routes', 0),
+                    'trucks': wave_data.get('truck_routes', 0)
+                }
+            
+            # Summary
+            summary = solution.get('summary', {})
+            analytics['summary'] = {
+                'total_distance': summary.get('total_distance', 0),
+                'total_cost': summary.get('total_cost', 0),
+                'total_nodes': summary.get('total_nodes_assigned', 0),
+                'avg_cost_per_node': summary.get('efficiency_metrics', {}).get('average_cost_per_node', 0),
+                'avg_distance_per_node': summary.get('efficiency_metrics', {}).get('average_distance_per_node', 0),
+                'success_rate': summary.get('assignment_success_rate', 0)
+            }
+            
+            return analytics
+            
+        except Exception as e:
+            print(f"[AnalyticsDashboard] Error processing analytics: {e}")
+            return analytics
+    
+    def _get_waves_list(self, solution):
+        """Extract waves from solution"""
+        waves = []
+        
+        # Try waves array
+        if 'waves' in solution and isinstance(solution['waves'], list):
+            waves = solution['waves']
+        else:
+            # Try wave_X structure
+            wave_keys = sorted([k for k in solution.keys() if k.startswith('wave_')])
+            for key in wave_keys:
+                waves.append(solution[key])
+        
+        return waves
+    
+    def _create_efficiency_section(self, analytics):
+        """Create efficiency metrics section"""
+        try:
+            group = self._create_group_box("Comparison of Efficiency Metrics (Drone vs. Truck)")
+            
+            efficiency = analytics['efficiency']
+            if not efficiency.get('Drone'):
+                group.layout().addWidget(QLabel("No efficiency data available"))
+                self.container_layout.addWidget(group)
+                return
+            
+            # Average Cost per Delivery
+            fig = Figure(figsize=(12, 4), dpi=80, facecolor='#2a2a2a')
+            ax = fig.add_subplot(111)
+            
+            types = []
+            costs = []
+            for vtype in ['Drone', 'E-Truck', 'F-Truck']:
+                if vtype in efficiency:
+                    types.append(vtype)
+                    costs.append(efficiency[vtype].get('avg_cost_per_node', 0))
+            
+            bars = ax.bar(types, costs, color=['#3b82f6', '#10b981', '#f97316'], width=0.6)
+            ax.set_ylabel('Avg Cost per Node ($)', color='#cccccc', fontsize=11, fontweight='bold')
+            ax.set_title('Average Cost per Delivery', color='#ff6b35', fontsize=12, fontweight='bold', pad=15)
+            ax.set_facecolor('#1a1a1a')
+            ax.tick_params(colors='#cccccc', labelsize=10)
+            ax.grid(axis='y', alpha=0.3, color='#444444', linestyle='--')
+            for spine in ax.spines.values():
+                spine.set_color('#444444')
+            fig.tight_layout()
+            
+            canvas = FigureCanvas(fig)
+            canvas.setMinimumHeight(280)
+            group.layout().addWidget(canvas)
+            
+            # Average Distance per Delivery
+            fig2 = Figure(figsize=(12, 4), dpi=80, facecolor='#2a2a2a')
+            ax2 = fig2.add_subplot(111)
+            
+            distances = []
+            for vtype in types:
+                distances.append(efficiency[vtype].get('avg_distance_per_node', 0))
+            
+            ax2.bar(types, distances, color=['#3b82f6', '#10b981', '#f97316'], width=0.6)
+            ax2.set_ylabel('Avg Distance per Node (km)', color='#cccccc', fontsize=11, fontweight='bold')
+            ax2.set_title('Average Distance per Delivery', color='#ff6b35', fontsize=12, fontweight='bold', pad=15)
+            ax2.set_facecolor('#1a1a1a')
+            ax2.tick_params(colors='#cccccc', labelsize=10)
+            ax2.grid(axis='y', alpha=0.3, color='#444444', linestyle='--')
+            for spine in ax2.spines.values():
+                spine.set_color('#444444')
+            fig2.tight_layout()
+            
+            canvas2 = FigureCanvas(fig2)
+            canvas2.setMinimumHeight(280)
+            group.layout().addWidget(canvas2)
+            
+            self.container_layout.addWidget(group)
+            
+        except Exception as e:
+            print(f"Error creating efficiency section: {e}")
+    
+    def _create_wave_metrics_section(self, analytics):
+        """Create wave metrics section"""
+        try:
+            group = self._create_group_box("Breakdown of Total Delivery Metrics (Waves)")
+            
+            waves = analytics['waves']
+            if not waves:
+                group.layout().addWidget(QLabel("No wave data available"))
+                self.container_layout.addWidget(group)
+                return
+            
+            fig = Figure(figsize=(12, 5), dpi=80, facecolor='#2a2a2a')
+            ax = fig.add_subplot(111)
+            
+            wave_names = list(waves.keys())
+            distances = [waves[w]['distance'] for w in wave_names]
+            costs = [waves[w]['cost'] for w in wave_names]
+            
+            x = range(len(wave_names))
+            ax.bar([i - 0.2 for i in x], distances, width=0.4, label='Distance (km)', color='#3b82f6', edgecolor='#555555')
+            ax2 = ax.twinx()
+            ax2.plot([i + 0.2 for i in x], costs, 'o-', label='Cost ($)', color='#f97316', linewidth=2.5, markersize=10)
+            
+            ax.set_ylabel('Distance (km)', color='#cccccc', fontsize=11, fontweight='bold')
+            ax2.set_ylabel('Cost ($)', color='#cccccc', fontsize=11, fontweight='bold')
+            ax.set_title('Total Distance & Cost per Wave', color='#ff6b35', fontsize=12, fontweight='bold', pad=15)
+            ax.set_xticks(x)
+            ax.set_xticklabels(wave_names, fontsize=10)
+            ax.set_facecolor('#1a1a1a')
+            ax.tick_params(colors='#cccccc', labelsize=10)
+            ax2.tick_params(colors='#cccccc', labelsize=10)
+            ax.grid(axis='y', alpha=0.3, color='#444444', linestyle='--')
+            for spine in ax.spines.values():
+                spine.set_color('#444444')
+            for spine in ax2.spines.values():
+                spine.set_color('#444444')
+            
+            # Add legend
+            lines1, labels1 = ax.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            ax.legend(lines1 + lines2, labels1 + labels2, loc='upper left', framealpha=0.9, facecolor='#2a2a2a', edgecolor='#555555')
+            
+            fig.tight_layout()
+            canvas = FigureCanvas(fig)
+            canvas.setMinimumHeight(320)
+            group.layout().addWidget(canvas)
+            
+            self.container_layout.addWidget(group)
+            
+        except Exception as e:
+            print(f"Error creating wave metrics section: {e}")
+    
+    def _create_distribution_section(self, analytics):
+        """Create distribution analysis section"""
+        try:
+            group = self._create_group_box("Distribution-focused Analysis")
+            
+            efficiency = analytics['efficiency']
+            routes = efficiency.get('all_routes', [])
+            
+            if not routes:
+                group.layout().addWidget(QLabel("No route data available"))
+                self.container_layout.addWidget(group)
+                return
+            
+            distances = [r['distance'] / max(1, r['nodes']) for r in routes]
+            
+            fig = Figure(figsize=(12, 4.5), dpi=80, facecolor='#2a2a2a')
+            ax = fig.add_subplot(111)
+            
+            n, bins, patches = ax.hist(distances, bins=8, color='#8b5cf6', edgecolor='#cccccc', alpha=0.85)
+            ax.set_xlabel('Distance per Node (km)', color='#cccccc', fontsize=11, fontweight='bold')
+            ax.set_ylabel('Frequency', color='#cccccc', fontsize=11, fontweight='bold')
+            ax.set_title('Distribution of Delivery Distances', color='#ff6b35', fontsize=12, fontweight='bold', pad=15)
+            ax.set_facecolor('#1a1a1a')
+            ax.tick_params(colors='#cccccc', labelsize=10)
+            ax.grid(axis='y', alpha=0.3, color='#444444', linestyle='--')
+            for spine in ax.spines.values():
+                spine.set_color('#444444')
+            fig.tight_layout()
+            
+            canvas = FigureCanvas(fig)
+            canvas.setMinimumHeight(300)
+            group.layout().addWidget(canvas)
+            
+            self.container_layout.addWidget(group)
+            
+        except Exception as e:
+            print(f"Error creating distribution section: {e}")
+    
+    def _create_summary_section(self, analytics):
+        """Create summary metrics section"""
+        try:
+            group = self._create_group_box("Overall Summary Metrics")
+            
+            summary = analytics['summary']
+            
+            metrics_html = f"""
+            <table style='width:100%; color:#cccccc; background-color:#1a1a1a; border-collapse: collapse;'>
+                <tr style='border-bottom: 1px solid #444444;'>
+                    <td style='padding: 12px; font-weight: bold;'>Total Distance</td>
+                    <td style='padding: 12px; color:#3b82f6; text-align: right; font-weight: bold;'>{summary['total_distance']:.2f} km</td>
+                </tr>
+                <tr style='border-bottom: 1px solid #444444;'>
+                    <td style='padding: 12px; font-weight: bold;'>Total Cost</td>
+                    <td style='padding: 12px; color:#10b981; text-align: right; font-weight: bold;'>${summary['total_cost']:.2f}</td>
+                </tr>
+                <tr style='border-bottom: 1px solid #444444;'>
+                    <td style='padding: 12px; font-weight: bold;'>Total Nodes</td>
+                    <td style='padding: 12px; color:#8b5cf6; text-align: right; font-weight: bold;'>{summary['total_nodes']}</td>
+                </tr>
+                <tr style='border-bottom: 1px solid #444444;'>
+                    <td style='padding: 12px; font-weight: bold;'>Avg Cost/Node</td>
+                    <td style='padding: 12px; color:#f97316; text-align: right; font-weight: bold;'>${summary['avg_cost_per_node']:.2f}</td>
+                </tr>
+                <tr>
+                    <td style='padding: 12px; font-weight: bold;'>Success Rate</td>
+                    <td style='padding: 12px; color:#10b981; text-align: right; font-weight: bold;'>{summary['success_rate']:.1f}%</td>
+                </tr>
+            </table>
+            """
+            
+            label = QLabel(metrics_html)
+            label.setStyleSheet("background-color: #1a1a1a; padding: 0px; border-radius: 0px;")
+            group.layout().addWidget(label)
+            
+            self.container_layout.addWidget(group)
+            
+        except Exception as e:
+            print(f"Error creating summary section: {e}")
+    
+    def _create_group_box(self, title):
+        """Create styled group box"""
+        group = QGroupBox(title)
+        group.setStyleSheet("""
+            QGroupBox {
+                font-size: 14px;
+                font-weight: bold;
+                color: #ff6b35;
+                background-color: #2a2a2a;
+                padding: 15px;
+                border: 1px solid #444444;
+                border-radius: 5px;
+                margin-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """)
+        layout = QVBoxLayout(group)
+        layout.setSpacing(10)
+        return group
+    
+    def show_waiting_message(self):
+        """Show waiting message"""
+        try:
+            while self.container_layout.count():
+                self.container_layout.takeAt(0).widget().deleteLater()
+            
+            waiting_group = self._create_group_box("Waiting for Solution Data")
+            label = QLabel("Waiting for backend solution.json...\n\nBackend optimization is processing")
+            label.setAlignment(Qt.AlignCenter)
+            label.setStyleSheet("color: #cccccc; padding: 30px;")
+            waiting_group.layout().addWidget(label)
+            self.container_layout.addWidget(waiting_group)
+            self.container_layout.addStretch()
+            
+        except Exception as e:
+            print(f"Error showing waiting message: {e}")
     
     def refresh_data(self):
         """Manual refresh"""
         self.load_solution_data()
     
-    def update_all_charts(self):
-        """Update all charts with current data"""
-        if not self.current_wave:
-            return
-        
-        try:
-            self.update_cost_chart()
-            self.update_distance_chart()
-            self.update_capacity_chart()
-            self.update_summary()
-        except Exception as e:
-            print(f"Error updating charts: {e}")
-    
-    def update_cost_chart(self):
-        """Update cost per delivery chart"""
-        try:
-            drones = self.current_wave.get('drones', [])
-            trucks = self.current_wave.get('trucks', [])
-            
-            names = []
-            costs = []
-            colors = []
-            
-            for i, drone in enumerate(drones):
-                avg_cost = drone['cost'] / len(drone['node_ids'])
-                names.append(f"D{i+1}")
-                costs.append(avg_cost)
-                colors.append('#3b82f6')
-            
-            for truck in trucks:
-                avg_cost = truck['cost'] / len(truck['node_ids'])
-                vehicle_id = truck.get('vehicle_id', 'Truck')
-                if 'E_' in vehicle_id:
-                    names.append("ET")
-                    colors.append('#10b981')
-                else:
-                    names.append("FT")
-                    colors.append('#f97316')
-                costs.append(avg_cost)
-            
-            # Clear and replot
-            self.cost_plot.clear()
-            x = list(range(len(names)))
-            self.cost_plot.plot(x, costs, pen=None, symbol='o', symbolSize=10, 
-                              symbolBrush=pg.mkBrush('#ff6b35'))
-            self.cost_plot.setXRange(-0.5, len(names) - 0.5)
-            
-            # Update stats label
-            avg_all = sum(costs) / len(costs) if costs else 0
-            stats_text = f"Average: ${avg_all:.2f}/delivery | Min: ${min(costs):.2f} | Max: ${max(costs):.2f}"
-            self.cost_stats.setText(stats_text)
-        except Exception as e:
-            print(f"Error updating cost chart: {e}")
-    
-    def update_distance_chart(self):
-        """Update distance per delivery chart"""
-        try:
-            drones = self.current_wave.get('drones', [])
-            trucks = self.current_wave.get('trucks', [])
-            
-            names = []
-            distances = []
-            
-            for i, drone in enumerate(drones):
-                avg_dist = drone['distance'] / len(drone['node_ids'])
-                names.append(f"D{i+1}")
-                distances.append(avg_dist)
-            
-            for truck in trucks:
-                avg_dist = truck['distance'] / len(truck['node_ids'])
-                vehicle_id = truck.get('vehicle_id', 'Truck')
-                if 'E_' in vehicle_id:
-                    names.append("ET")
-                else:
-                    names.append("FT")
-                distances.append(avg_dist)
-            
-            # Clear and replot
-            self.distance_plot.clear()
-            x = list(range(len(names)))
-            self.distance_plot.plot(x, distances, pen=None, symbol='s', symbolSize=10,
-                                   symbolBrush=pg.mkBrush('#10b981'))
-            self.distance_plot.setXRange(-0.5, len(names) - 0.5)
-            
-            # Update stats
-            avg_all = sum(distances) / len(distances) if distances else 0
-            stats_text = f"Average: {avg_all:.2f}km/delivery | Min: {min(distances):.2f}km | Max: {max(distances):.2f}km"
-            self.distance_stats.setText(stats_text)
-        except Exception as e:
-            print(f"Error updating distance chart: {e}")
-    
-    def update_capacity_chart(self):
-        """Update capacity utilization chart"""
-        try:
-            trucks = self.current_wave.get('trucks', [])
-            
-            names = []
-            weights = []
-            volumes = []
-            
-            for truck in trucks:
-                vehicle_id = truck.get('vehicle_id', 'Truck')
-                if 'E_' in vehicle_id:
-                    names.append("E-Truck")
-                else:
-                    names.append("F-Truck")
-                
-                capacity = truck.get('capacity_utilization', {})
-                weights.append(capacity.get('weight_percent', 0))
-                volumes.append(capacity.get('volume_percent', 0))
-            
-            # Clear and replot
-            self.capacity_plot.clear()
-            x = list(range(len(names)))
-            self.capacity_plot.plot(x, weights, pen=pg.mkPen('#3b82f6', width=2), 
-                                   symbol='o', symbolSize=8, name='Weight %')
-            self.capacity_plot.plot(x, volumes, pen=pg.mkPen('#f97316', width=2),
-                                   symbol='s', symbolSize=8, name='Volume %')
-            self.capacity_plot.setXRange(-0.5, len(names) - 0.5)
-            self.capacity_plot.addLegend()
-            
-            # Update stats
-            avg_weight = sum(weights) / len(weights) if weights else 0
-            avg_volume = sum(volumes) / len(volumes) if volumes else 0
-            stats_text = f"Avg Weight: {avg_weight:.1f}% | Avg Volume: {avg_volume:.1f}%"
-            self.capacity_stats.setText(stats_text)
-        except Exception as e:
-            print(f"Error updating capacity chart: {e}")
-    
-    def update_summary(self):
-        """Update summary statistics"""
-        try:
-            drones = self.current_wave.get('drones', [])
-            trucks = self.current_wave.get('trucks', [])
-            
-            total_deliveries = sum(len(d['node_ids']) for d in drones) + sum(len(t['node_ids']) for t in trucks)
-            total_distance = sum(d['distance'] for d in drones) + sum(t['distance'] for t in trucks)
-            total_cost = sum(d['cost'] for d in drones) + sum(t['cost'] for t in trucks)
-            total_weight = sum(d['total_weight'] for d in drones) + sum(t['total_weight'] for t in trucks)
-            
-            self.summary_total_points.setText(f"Total Deliveries: {total_deliveries}")
-            self.summary_total_dist.setText(f"Total Distance: {total_distance:.2f} km")
-            self.summary_total_cost.setText(f"Total Cost: ${total_cost:.2f}")
-            self.summary_total_weight.setText(f"Total Weight: {total_weight:.2f} kg")
-            
-            # Vehicle breakdown
-            vehicle_text = ""
-            for i, drone in enumerate(drones):
-                vehicle_text += f"Drone {i+1}: {len(drone['node_ids'])} deliveries, {drone['distance']:.2f}km, ${drone['cost']:.2f}\n"
-            for truck in trucks:
-                vehicle_id = truck.get('vehicle_id', 'Truck')
-                vehicle_text += f"{vehicle_id}: {len(truck['node_ids'])} deliveries, {truck['distance']:.2f}km, ${truck['cost']:.2f}\n"
-            
-            self.summary_vehicles.setText(vehicle_text.strip())
-        except Exception as e:
-            print(f"Error updating summary: {e}")
-    
-    def get_backend_folder(self):
-        """Get backend folder path"""
-        try:
-            current_file = os.path.abspath(__file__)
-            frontend_widgets = os.path.dirname(current_file)
-            frontend = os.path.dirname(frontend_widgets)
-            project_root = os.path.dirname(frontend)
-            return os.path.join(project_root, 'backend')
-        except:
-            return None
-    
     def closeEvent(self, event):
-        """Clean up on close"""
+        """Handle close"""
         self._widget_destroyed = True
         if hasattr(self, 'refresh_timer'):
             self.refresh_timer.stop()
         super().closeEvent(event)
+    
+    def deleteLater(self):
+        """Override deleteLater"""
+        self._widget_destroyed = True
+        if hasattr(self, 'refresh_timer'):
+            self.refresh_timer.stop()
+        super().deleteLater()

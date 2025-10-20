@@ -25,7 +25,6 @@ from gui.backend_handler import BackendHandler
 from gui.map_handler import MapHandler
 from gui.wave_controller import WaveController
 from gui.vehicle_controller import VehicleController
-from core.data_manager import DataSimulator
 from core.delivery_generator import DeliveryPointGenerator
 
 
@@ -187,7 +186,6 @@ class IndiaAirspaceMap(QMainWindow):
         # Setup UI
         print("Step 3: Setting up user interface...")
         self.setup_ui()
-        self.setup_data_simulator()
         print("✅ UI setup complete\n")
         
         # Create map handler
@@ -577,29 +575,6 @@ class IndiaAirspaceMap(QMainWindow):
         except Exception as e:
             print(f"Error updating UI: {e}")
     
-    def setup_data_simulator(self):
-        """Setup data simulator for sound monitoring"""
-        try:
-            self.data_simulator = DataSimulator()
-            self.data_simulator.sound_data_updated.connect(self.on_sound_data_updated)
-            self.data_simulator.start()
-        except Exception as e:
-            print(f"Error setting up data simulator: {e}")
-            self.data_simulator = None
-    
-    def on_sound_data_updated(self, level, waveform):
-        """Handle sound data updates"""
-        if self._widgets_destroyed:
-            return
-        
-        try:
-            if hasattr(self.sound_graphs, 'update_sound_data'):
-                self.sound_graphs.update_sound_data(level, waveform)
-            if hasattr(self.noise_stats, 'update_statistics'):
-                self.noise_stats.update_statistics(level)
-        except Exception as e:
-            print(f"Error updating sound data: {e}")
-    
     def closeEvent(self, event):
         """Clean up on close"""
         print("Shutting down system...")
@@ -628,14 +603,6 @@ class IndiaAirspaceMap(QMainWindow):
             self.vehicle_controller.cleanup()
         except Exception as e:
             print(f"Error stopping controllers: {e}")
-        
-        # Stop threads
-        try:
-            if hasattr(self, 'data_simulator') and self.data_simulator:
-                self.data_simulator.stop()
-                self.data_simulator.wait(2000)
-        except Exception as e:
-            print(f"Error stopping data simulator: {e}")
         
         # Mark destroyed
         self._widgets_destroyed = True
