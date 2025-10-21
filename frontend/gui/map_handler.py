@@ -101,7 +101,7 @@ class MapHandler:
         self._run_js_code(js_code)
     
     def send_vehicles_to_map_batch(self, vehicles_dict, batch_size=12):
-        """Send vehicle data in batches"""
+        """Send vehicle data in batches with full metrics"""
         if not self.map_ready:
             return
         
@@ -118,9 +118,15 @@ class MapHandler:
                         "pos": v["pos"],
                         "route": v["route"][:25],  # Limit for performance
                         "speed": v["speed"],
-                        "weight": v["weight"],
-                        "volume": v.get("volume", "N/A"),
-                        "delivery_count": len(v.get("all_deliveries", []))
+                        "weight": v.get("backend_weight", v.get("weight", 0)),
+                        "volume": v.get("backend_volume", v.get("volume", 0)),
+                        "delivery_count": len(v.get("all_deliveries", [])),
+                        "distance": v.get("distance", 0),
+                        "cost": v.get("cost", 0),
+                        "weight_percent": v.get("weight_percent", 0),
+                        "volume_percent": v.get("volume_percent", 0),
+                        "node_ids": v.get("node_ids", []),
+                        "route_sequence": ' → '.join(v.get("route_node_ids", []))
                     }
                     for name, v in batch
                 ],

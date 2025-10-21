@@ -1,14 +1,15 @@
-import requests
-from typing import Dict, List, Any, Optional, Tuple
+"""
+Map builder that displays solution.json data with OSRM routing for trucks
+Place this in: frontend/gui/map_builder.py
+"""
 import folium
-
-# reuse your RouteManager (the OSRM-based manager you added earlier)
+from typing import Dict, List, Optional, Tuple
 from .route_manager import RouteManager
 
-def build_node_lookup(nodes: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+
+def build_node_lookup(nodes: List[Dict]) -> Dict[str, Dict[str, float]]:
     """
     Convert list of node dicts to lookup: node_id -> {"lat":..., "lon":...}
-    Expect node dicts to include at least 'node_id', 'lat', 'lon'.
     """
     lookup = {}
     for n in nodes:
@@ -18,117 +19,279 @@ def build_node_lookup(nodes: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]
         lookup[nid] = {"lat": float(n["lat"]), "lon": float(n["lon"])}
     return lookup
 
-def coords_from_node_ids(node_ids: List[str], nodes_lookup: Dict[str, Dict[str, float]]) -> List[List[float]]:
+
+def coords_from_node_ids(node_ids: List[str], nodes_lookup: Dict) -> List[List[float]]:
     """
-    Convert list of node ids (['depot','cust_1',...]) to list of [lat, lon].
-    Raises KeyError if a node id is missing.
+    Convert node IDs to [lat, lon] coordinates
     """
     coords = []
     for nid in node_ids:
         if nid not in nodes_lookup:
-            raise KeyError(f"Missing node coordinates for id: {nid}")
+            raise KeyError(f"Missing node: {nid}")
         p = nodes_lookup[nid]
         coords.append([p["lat"], p["lon"]])
     return coords
 
+
 def build_map_from_solution(
-    solution: Dict[str, Any],
+    solution: Dict,
     nodes_lookup: Dict[str, Dict[str, float]],
     backend_center: Optional[Tuple[float, float]] = None,
     tiles: str = "OpenStreetMap"
 ) -> folium.Map:
     """
-    Build a folium.Map with:
-      - truck routes as road-following polylines (OSRM)
-      - drone routes as straight/fast lines (depot->cust->depot)
-      - markers for depot / customer nodes
-
-    solution: parsed JSON (initial_solution.json structure)
-    nodes_lookup: node_id -> {"lat":..., "lon":...}
-    returns folium.Map
+    Build folium map from solution.json with:
+    - OSRM routing for trucks (real road paths)
+    - Straight lines for drones
+    - All data from solution.json displayed
+    
+    Args:
+        solution: Parsed solution.json dictionary
+        nodes_lookup: node_id -> {lat, lon}
+        backend_center: Center coordinates (lat, lon), defaults to depot
+        tiles: Map tile type
+    
+    Returns:
+        folium.Map object
     """
-    # map center fallback
+    
+    # Get map center
     if backend_center:
         center = backend_center
     else:
-        # try depot coords
         depot = nodes_lookup.get("depot") or next(iter(nodes_lookup.values()))
         center = (depot["lat"], depot["lon"])
-
-    m = folium.Map(location=center, zoom_start=10, tiles=tiles)
-
-    # add markers for nodes
-    for nid, p in nodes_lookup.items():
+    
+    m = folium.Map(location=center, zoom_start=11, tiles=tiles)
+    
+    # Add all node markers
+    print("Adding node markers...")
+    for node_id, coords in nodes_lookup.items():
+        if node_id == "depot":
+            color = "darkblue"
+            icon_symbol = "home"
+            size = 10
+        else:
+            color = "purple"
+            icon_symbol = "package"
+            size = 6
+        
         folium.CircleMarker(
-            location=(p["lat"], p["lon"]),
-            radius=5,
-            color="purple" if nid.startswith("cust") else "blue",
+            location=(coords["lat"], coords["lon"]),
+            radius=size,
+            color=color,
             fill=True,
-            fill_opacity=0.8,
-            popup=f"{nid}"
+            fill_opacity=0.9,
+            popup=f"<b>{node_id}</b>",
+            tooltip=node_id
         ).add_to(m)
-
-    # Pull wave(s)
-    waves = {k: v for k, v in solution.items() if k.startswith("wave_")} if "wave_1" not in solution else {"wave_1": solution.get("wave_1")}
-    # if solution already top-level 'wave_1', handle that
-    if "wave_1" in solution:
-        waves = {"wave_1": solution["wave_1"]}
-
-    # process each wave
-    for wave_name, wave in waves.items():
-        # drones
-        for d in wave.get("drones", []):
+    
+    # Process each wave in solution
+    print("Processing solution waves...")
+    for wave_key, wave_data in solution.items():
+        if wave_key == 'summary':
+            continue
+        
+        if not isinstance(wave_data, dict):
+            continue
+        
+        print(f"\nProcessing {wave_key}...")
+        
+        # ==================== DRONES ====================
+        # Drones get straight line routes (no OSRM)
+        for drone in wave_data.get('drones', []):
             try:
-                route_node_ids = d.get("route", [])
-                route_coords = coords_from_node_ids(route_node_ids, nodes_lookup)
+                route_nodes = drone.get('route', [])
+                route_coords = coords_from_node_ids(route_nodes, nodes_lookup)
             except KeyError as e:
-                # skip missing nodes
+                print(f"  Skipping drone {drone.get('vehicle_id')}: {e}")
                 continue
-            # draw straight polyline (distinct style)
-            folium.PolyLine(locations=route_coords, color="red", weight=2.5, dash_array="5, 5", popup=d.get("vehicle_id")).add_to(m)
-
-        # trucks
-        for t in wave.get("trucks", []):
+            
+            vehicle_id = drone.get('vehicle_id', 'Drone')
+            distance = drone.get('distance', 0)
+            cost = drone.get('cost', 0)
+            weight = drone.get('total_weight', 0)
+            volume = drone.get('total_volume', 0)
+            
+            # Create popup with all data
+            popup_text = f"""
+            <b>{vehicle_id}</b><br>
+            Route: {' → '.join(route_nodes)}<br>
+            Distance: {distance:.2f} km<br>
+            Cost: ${cost:.2f}<br>
+            Weight: {weight:.2f} kg<br>
+            Volume: {volume:.0f} units
+            """
+            
+            # Draw straight dashed line for drone
+            folium.PolyLine(
+                locations=route_coords,
+                color="red",
+                weight=2.5,
+                opacity=0.8,
+                dash_array="5, 5",
+                popup=folium.Popup(popup_text, max_width=250),
+                tooltip=vehicle_id
+            ).add_to(m)
+            
+            print(f"  Drone {vehicle_id}: {' → '.join(route_nodes)}")
+        
+        # ==================== TRUCKS ====================
+        # Trucks get OSRM routing (real road paths)
+        for truck in wave_data.get('trucks', []):
             try:
-                node_ids = t.get("route", [])
-                # convert node ids to lat/lon list
-                waypoint_coords = coords_from_node_ids(node_ids, nodes_lookup)
-            except KeyError:
+                route_nodes = truck.get('route', [])
+                waypoint_coords = coords_from_node_ids(route_nodes, nodes_lookup)
+            except KeyError as e:
+                print(f"  Skipping truck {truck.get('vehicle_id')}: {e}")
                 continue
-
-            # Try OSRM via RouteManager (returns list of [lat, lon] polyline or None)
-            try:
-                osrm_poly = RouteManager._get_osrm_route_fast(waypoint_coords)  # uses [lat,lon] input
-            except Exception:
-                osrm_poly = None
-
-            # If OSRM returned degenerate/None, attempt pairwise OSRM and join segments
-            if not osrm_poly:
-                concatenated = []
-                for i in range(len(waypoint_coords) - 1):
-                    seg = RouteManager._get_osrm_route_fast([waypoint_coords[i], waypoint_coords[i + 1]])
-                    if seg and len(seg) > 1:
-                        if not concatenated:
-                            concatenated.extend(seg)
-                        else:
-                            concatenated.extend(seg[1:])  # avoid duplicate join point
-                    else:
-                        # OSRM failed for this pair -> log and add direct segment (last resort)
-                        print(f"⚠️ OSRM missing segment {i}->{i+1} for truck {t.get('vehicle_id')}, using straight connection")
-                        # include both endpoints to preserve route order
-                        if not concatenated:
-                            concatenated.append(waypoint_coords[i])
-                        concatenated.append(waypoint_coords[i + 1])
-                osrm_poly = concatenated if concatenated else waypoint_coords
-
-            # draw truck polyline (solid, different color)
-            folium.PolyLine(locations=osrm_poly, color="green", weight=3, opacity=0.9, popup=t.get("vehicle_id")).add_to(m)
-
+            
+            vehicle_id = truck.get('vehicle_id', 'Truck')
+            distance = truck.get('distance', 0)
+            cost = truck.get('cost', 0)
+            weight = truck.get('total_weight', 0)
+            volume = truck.get('total_volume', 0)
+            capacity = truck.get('capacity_utilization', {})
+            
+            # Get OSRM route
+            print(f"  Getting OSRM route for {vehicle_id}...")
+            osrm_route = get_osrm_route_with_fallback(
+                waypoint_coords, 
+                vehicle_id,
+                route_nodes
+            )
+            
+            # Create detailed popup
+            cap_weight = capacity.get('weight_percent', 0)
+            cap_volume = capacity.get('volume_percent', 0)
+            
+            popup_text = f"""
+            <b>{vehicle_id}</b><br>
+            Assigned: {', '.join(route_nodes)}<br>
+            Distance: {distance:.2f} km<br>
+            Cost: ${cost:.2f}<br>
+            Weight: {weight:.2f} kg<br>
+            Volume: {volume:.0f} units<br>
+            Capacity: {cap_weight:.1f}% weight, {cap_volume:.1f}% volume
+            """
+            
+            # Determine color by truck type
+            if 'E_Truck' in vehicle_id or 'Electric' in vehicle_id:
+                color = "green"
+            else:
+                color = "orange"
+            
+            # Draw OSRM route (solid line)
+            folium.PolyLine(
+                locations=osrm_route,
+                color=color,
+                weight=3,
+                opacity=0.85,
+                popup=folium.Popup(popup_text, max_width=300),
+                tooltip=vehicle_id
+            ).add_to(m)
+            
+            print(f"  Truck {vehicle_id}: {' → '.join(route_nodes)}")
+    
     return m
 
-# Example usage:
-# nodes = requests.get(f"{BACKEND_BASE}/api/nodes").json()
-# nodes_lookup = build_node_lookup(nodes)
-# solution = requests.get(f"{BACKEND_BASE}/api/initial_solution").json()
-# m = build_map_from_solution(solution, nodes_lookup)
-# m.save("routes_map.html")
+
+def get_osrm_route_with_fallback(
+    waypoint_coords: List[List[float]], 
+    vehicle_id: str,
+    node_names: List[str]
+) -> List[List[float]]:
+    """
+    Get OSRM route with fallback to direct segments if OSRM fails
+    
+    Args:
+        waypoint_coords: List of [lat, lon] coordinates
+        vehicle_id: Vehicle ID for logging
+        node_names: Original node IDs for logging
+    
+    Returns:
+        List of [lat, lon] coordinates representing the route
+    """
+    
+    # Try full route first
+    try:
+        osrm_route = RouteManager._get_osrm_route_fast(waypoint_coords)
+        if osrm_route and len(osrm_route) > 1:
+            print(f"    OSRM route successful: {len(osrm_route)} points")
+            return osrm_route
+    except Exception as e:
+        print(f"    OSRM full route failed: {e}")
+    
+    # Fall back to pairwise segments
+    print(f"    Attempting pairwise OSRM segments...")
+    concatenated = []
+    
+    for i in range(len(waypoint_coords) - 1):
+        start = waypoint_coords[i]
+        end = waypoint_coords[i + 1]
+        
+        try:
+            segment = RouteManager._get_osrm_route_fast([start, end])
+            
+            if segment and len(segment) > 1:
+                if not concatenated:
+                    concatenated.extend(segment)
+                else:
+                    concatenated.extend(segment[1:])  # Skip duplicate start point
+                print(f"      Segment {i}->{i+1}: OK")
+            else:
+                # OSRM failed, use direct line
+                if not concatenated:
+                    concatenated.append(start)
+                concatenated.append(end)
+                print(f"      Segment {i}->{i+1}: Direct line (OSRM failed)")
+                
+        except Exception as e:
+            # Direct line fallback
+            if not concatenated:
+                concatenated.append(start)
+            concatenated.append(end)
+            print(f"      Segment {i}->{i+1}: Direct line (error: {str(e)[:50]})")
+    
+    if concatenated:
+        print(f"    Concatenated route: {len(concatenated)} points")
+        return concatenated
+    
+    # Last resort: return waypoints
+    print(f"    Using waypoints as fallback")
+    return waypoint_coords
+
+
+def display_solution_on_map(
+    solution: Dict,
+    nodes_lookup: Dict[str, Dict[str, float]]
+) -> folium.Map:
+    """
+    Complete workflow: load solution and display on map
+    
+    Args:
+        solution: solution.json dictionary
+        nodes_lookup: Node coordinates
+        output_file: Output HTML file name
+    
+    Returns:
+        folium.Map object
+    """
+    
+    print("\n" + "="*70)
+    print("BUILDING MAP FROM SOLUTION.JSON")
+    print("="*70)
+    
+    # Build map
+    m = build_map_from_solution(solution, nodes_lookup)
+    
+    # Save map
+    try:
+        m.save(output_file)
+        print(f"\nMap saved to: {output_file}")
+    except Exception as e:
+        print(f"Error saving map: {e}")
+    
+    print("="*70 + "\n")
+    
+    return m

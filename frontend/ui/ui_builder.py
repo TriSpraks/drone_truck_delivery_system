@@ -1,14 +1,14 @@
 """
-UI Builder Module
-Handles all UI component creation for the main window
+UI Builder Module - UPDATED with Analytics Dashboard
+Replaces sound monitoring with delivery performance analytics
 """
 from PyQt5.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel, 
-                              QToolBar, QAction, QWidget)
+                              QToolBar, QAction, QWidget, QScrollArea, QTabWidget)
 from PyQt5.QtCore import Qt
 
 from widgets.vehicle_control import VehicleControlPanel
 from widgets.delivery_info import DeliveryInfoWidget
-from widgets.sound_monitoring import SoundGraphWidget, NoiseStatisticsWidget
+from widgets.analytics_dashboard import AnalyticsDashboard
 
 
 class UIBuilder:
@@ -47,21 +47,27 @@ class UIBuilder:
         
         # Control panels
         try:
-            vehicle_control = VehicleControlPanel()
-            delivery_info = DeliveryInfoWidget(parent.depot_coords, parent.customer_count)
+            vehicle_control = VehicleControlPanel(parent=parent)
+            delivery_info = DeliveryInfoWidget(
+                parent.depot_coords, 
+                parent.customer_count,
+                parent=parent
+            )
         except Exception as e:
             print(f"Error creating control panels: {e}")
+            import traceback
+            traceback.print_exc()
             vehicle_control = QWidget()
             delivery_info = QWidget()
         
-        # Add to layout
+        # Add to layout with stretch
         left_layout.addWidget(title_label)
         left_layout.addWidget(depot_info_label)
         left_layout.addWidget(customer_info_label)
         left_layout.addWidget(fleet_info_label)
         left_layout.addWidget(fleet_summary_label)
-        left_layout.addWidget(vehicle_control)
-        left_layout.addWidget(delivery_info)
+        left_layout.addWidget(vehicle_control, 1)
+        left_layout.addWidget(delivery_info, 1)
         
         # Store references in parent
         parent.depot_info_label = depot_info_label
@@ -75,31 +81,74 @@ class UIBuilder:
     
     @staticmethod
     def create_right_panel(parent):
-        """Create right sidebar panel with sound monitoring"""
+        """Create right sidebar panel with analytics dashboard - SCROLLABLE"""
         right_panel = QFrame()
-        right_panel.setMaximumWidth(400)
-        right_panel.setMinimumWidth(350)
+        right_panel.setMaximumWidth(500)
+        right_panel.setMinimumWidth(400)
         right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
         
-        # Sound monitoring title
-        sound_title = QLabel("Drone Sound Monitoring")
-        sound_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #ff6b35; padding: 10px;")
+        # Analytics title
+        analytics_title = QLabel("Delivery Performance Analytics")
+        analytics_title.setStyleSheet("""
+            font-size: 16px; 
+            font-weight: bold; 
+            color: #ff6b35; 
+            padding: 10px;
+            background-color: #1a1a1a;
+            border-bottom: 2px solid #ff6b35;
+        """)
         
+        # Create scrollable area for analytics
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: #1a1a1a;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background: #2a2a2a;
+                width: 12px;
+                border-radius: 6px;
+                margin: 0px 0px 0px 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #555555;
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #777777;
+            }
+            QScrollBar::add-line:vertical {
+                border: none;
+                background: none;
+            }
+            QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+        """)
+        
+        # Create analytics dashboard widget
         try:
-            sound_graphs = SoundGraphWidget()
-            noise_stats = NoiseStatisticsWidget()
+            analytics_widget = AnalyticsDashboard(parent=parent)
+            scroll_area.setWidget(analytics_widget)
         except Exception as e:
-            print(f"Error creating sound widgets: {e}")
-            sound_graphs = QWidget()
-            noise_stats = QWidget()
+            print(f"Error creating analytics dashboard: {e}")
+            import traceback
+            traceback.print_exc()
+            error_label = QLabel("Error loading analytics dashboard")
+            error_label.setStyleSheet("color: #ff4444; padding: 20px;")
+            scroll_area.setWidget(error_label)
         
-        right_layout.addWidget(sound_title)
-        right_layout.addWidget(sound_graphs, 2)
-        right_layout.addWidget(noise_stats, 1)
+        right_layout.addWidget(analytics_title)
+        right_layout.addWidget(scroll_area, 1)
         
-        # Store references in parent
-        parent.sound_graphs = sound_graphs
-        parent.noise_stats = noise_stats
+        # Store reference in parent
+        parent.analytics_dashboard = analytics_widget
         
         return right_panel
     
@@ -107,6 +156,19 @@ class UIBuilder:
     def create_toolbar(parent):
         """Create toolbar with actions"""
         toolbar = QToolBar()
+        toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #2a2a2a;
+                border-bottom: 1px solid #404040;
+                spacing: 5px;
+                padding: 5px;
+            }
+            QToolBar::separator {
+                background: #555555;
+                width: 2px;
+                margin: 0px 5px;
+            }
+        """)
         
         # Change depot action
         change_depot_action = QAction("🚩 Change Depot & Fleet", parent)
@@ -116,14 +178,14 @@ class UIBuilder:
         toolbar.addSeparator()
         
         # Toggle NFZ
-        toggle_nfz_action = QAction("Toggle No-Fly Zones", parent)
+        toggle_nfz_action = QAction("🚫 Toggle No-Fly Zones", parent)
         toggle_nfz_action.setCheckable(True)
         toggle_nfz_action.setChecked(True)
         toggle_nfz_action.triggered.connect(parent.toggle_no_fly_zones)
         toolbar.addAction(toggle_nfz_action)
         
         # Toggle vehicles
-        toggle_vehicles_action = QAction("Toggle Vehicles", parent)
+        toggle_vehicles_action = QAction("👁 Toggle Vehicles", parent)
         toggle_vehicles_action.setCheckable(True)
         toggle_vehicles_action.setChecked(True)
         toggle_vehicles_action.triggered.connect(parent.toggle_vehicles)
@@ -149,6 +211,11 @@ class UIBuilder:
         restart_action.setVisible(False)
         toolbar.addAction(restart_action)
         
+        # Refresh Analytics
+        refresh_analytics = QAction("🔃 Refresh Analytics", parent)
+        refresh_analytics.triggered.connect(lambda: parent.analytics_dashboard.refresh_data() if hasattr(parent, 'analytics_dashboard') else None)
+        toolbar.addAction(refresh_analytics)
+        
         # Store references in parent
         parent.change_depot_action = change_depot_action
         parent.toggle_nfz_action = toggle_nfz_action
@@ -156,5 +223,6 @@ class UIBuilder:
         parent.start_stop_action = start_stop_action
         parent.next_wave_action = next_wave_action
         parent.restart_action = restart_action
+        parent.refresh_analytics = refresh_analytics
         
         return toolbar

@@ -194,7 +194,7 @@ import requests
 import webbrowser
 from typing import List, Dict, Optional, Tuple
 from core.route_plotter import build_map_from_solution, build_node_lookup
-from config.app_config import BACKEND_URL  # ensure BACKEND_URL is set like "http://127.0.0.1:8000"
+from config.app_config import BACKEND_URL  # ensure BACKEND_URL is set like "https://trispark.onrender.com"
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 import threading
 
@@ -855,7 +855,7 @@ def fetch_solution_and_render_map(output_path: str = "routes_map.html", open_in_
     Fetch solution and nodes from backend, build map via route_plotter and save HTML file.
     Returns the output file path.
     """
-    sol_resp = requests.get(f"{BACKEND_URL}/api/initial_solution", timeout=15)
+    sol_resp = requests.get(f"{BACKEND_URL}/api/solution", timeout=15)
     sol_resp.raise_for_status()
     solution = sol_resp.json()
 
