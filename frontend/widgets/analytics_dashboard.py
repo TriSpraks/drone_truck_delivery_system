@@ -4,6 +4,7 @@ Displays all feasible delivery performance analytics graphs
 """
 import os
 import json
+import time
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
                             QScrollArea, QGroupBox)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
@@ -25,13 +26,10 @@ class AnalyticsDashboard(QWidget):
         
         self.init_ui()
         
-        # Setup continuous polling for solution.json updates
-        self.refresh_timer = QTimer()
-        self.refresh_timer.timeout.connect(self.periodic_check_solution)
-        self.refresh_timer.start(2000)  # Check every 2 seconds
-        
-        # Initial load
-        QTimer.singleShot(1000, self.load_solution_data)
+        self.backend_complete = False  # Flag to track if backend processing is done
+        self.solution_fetched = False  # Track if we've already fetched solution
+
+        # No initial load - wait for main window to trigger loading after backend completion
     
     def init_ui(self):
         """Initialize analytics UI"""
@@ -97,22 +95,50 @@ class AnalyticsDashboard(QWidget):
             return None
     
     def periodic_check_solution(self):
-        """Continuously check for updated solution.json"""
+        """Adaptive polling for solution updates from API"""
         if self._widget_destroyed:
             return
-        
+
         try:
             solution = self._load_solution_file()
             if solution:
                 solution_str = json.dumps(solution, sort_keys=True)
                 solution_hash = hash(solution_str)
-                
+
                 if solution_hash != self.last_solution_hash:
+                    # Solution changed - reset polling to faster interval
                     self.last_solution_hash = solution_hash
                     self.current_solution = solution
                     self.refresh_all_graphs()
+                    self.consecutive_unchanged = 0
+                    self._adjust_poll_interval(faster=True)
+                    print(f"[AnalyticsDashboard] Solution updated - hash: {solution_hash}, polling every {self.poll_interval//1000}s")
+                else:
+                    # Solution unchanged - gradually slow down polling
+                    self.consecutive_unchanged += 1
+                    self._adjust_poll_interval(faster=False)
+            else:
+                # No solution available - keep current polling
+                pass
         except Exception as e:
-            pass  # Silent fail for polling
+            # On error, don't change polling interval
+            pass
+
+    def _adjust_poll_interval(self, faster=False):
+        """Adjust polling interval based on solution change frequency"""
+        if faster:
+            # Speed up when solution changes
+            self.poll_interval = max(2000, self.poll_interval // 2)  # Minimum 2 seconds
+        else:
+            # Slow down when solution unchanged
+            if self.consecutive_unchanged > 5:
+                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 1.5)
+            elif self.consecutive_unchanged > 10:
+                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 2)
+
+        # Apply new interval
+        if self.poll_interval != self.refresh_timer.interval():
+            self.refresh_timer.setInterval(int(self.poll_interval))
     
     def load_solution_data(self):
         """Load solution.json from backend folder"""
@@ -133,20 +159,74 @@ class AnalyticsDashboard(QWidget):
             self.show_waiting_message()
     
     def _load_solution_file(self):
-        """Load solution.json from backend folder"""
+        """Load solution from backend API - only after backend completion"""
         try:
-            backend_folder = self.get_backend_folder_path()
-            if not backend_folder:
+            import requests
+
+            # Don't poll if backend processing not complete
+            if not self.backend_complete:
+                # Check if backend has completed by looking for solution
+                response = requests.get(
+                    "https://trispark.onrender.com/api/solution",
+                    timeout=15
+                )
+
+                if response.status_code == 200:
+                    solution = response.json()
+                    if solution:
+                        print("[AnalyticsDashboard] Backend processing complete - fetching solution once")
+                        self.backend_complete = True
+                        self.solution_fetched = True  # Mark that we've fetched the solution
+                        return solution
+                # Backend not ready yet
                 return None
-            
-            solution_file = os.path.join(backend_folder, 'solution.json')
-            if os.path.exists(solution_file):
-                with open(solution_file, 'r') as f:
-                    return json.load(f)
+
+            # Backend complete - use cached solution if already fetched
+            if self.solution_fetched and self.current_solution:
+                return self.current_solution
+
+            # First time fetching after backend completion
+            response = requests.get(
+                "https://trispark.onrender.com/api/solution",
+                timeout=15
+            )
+
+            if response.status_code == 200:
+                solution = response.json()
+                if solution:
+                    self.solution_fetched = True
+                    return solution
+            elif response.status_code == 404:
+                # Solution disappeared - reset backend complete flag
+                self.backend_complete = False
+                self.solution_fetched = False
+                if self.refresh_timer:
+                    self.refresh_timer.stop()
+                    self.refresh_timer = None
+                return None
+            else:
+                print(f"[AnalyticsDashboard] Failed to fetch solution: HTTP {response.status_code}")
+                return None
+
+        except requests.exceptions.Timeout:
+            print("[AnalyticsDashboard] Timeout fetching solution from API")
+            return None
+        except requests.exceptions.ConnectionError:
+            print("[AnalyticsDashboard] Connection error - cannot reach backend API")
+            return None
         except Exception as e:
-            print(f"[AnalyticsDashboard] Error reading solution file: {e}")
-        
+            print(f"[AnalyticsDashboard] Error fetching solution: {e}")
+
         return None
+
+    def _start_adaptive_polling(self):
+        """Start adaptive polling once backend processing is complete"""
+        if self.refresh_timer is None:
+            from PyQt5.QtCore import QTimer
+            self.refresh_timer = QTimer()
+            self.refresh_timer.timeout.connect(self.periodic_check_solution)
+            self.refresh_timer.start(self.poll_interval)
+            print(f"[AnalyticsDashboard] Started adaptive polling every {self.poll_interval//1000}s")
     
     def refresh_all_graphs(self):
         """Refresh all analytics graphs"""

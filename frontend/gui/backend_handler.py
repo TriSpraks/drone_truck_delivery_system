@@ -13,7 +13,7 @@ from typing import List, Dict, Optional
 class BackendHandler:
     """Handles all backend API communication"""
     
-    BASE_URL = "http://127.0.0.1:8000"
+    BASE_URL = "https://trispark.onrender.com"
     
     @staticmethod
     def calculate_timeout(num_nodes: int) -> int:
@@ -232,52 +232,55 @@ class BackendHandler:
             return False
     
     @staticmethod
-    def load_solution(backend_folder_path: str) -> Optional[Dict]:
+    def load_solution(backend_folder_path: str = None) -> Optional[Dict]:
         """
-        Load solution.json from backend folder
-        
+        Load solution from backend API
+
         Args:
-            backend_folder_path: Path to backend folder containing solution.json
-        
+            backend_folder_path: Ignored - kept for compatibility
+
         Returns:
             Dictionary with solution data or None if failed
         """
         try:
-            solution_file = os.path.join(backend_folder_path, 'solution.json')
-            
-            print(f"Looking for solution.json at: {solution_file}")
-            
-            if not os.path.exists(solution_file):
-                print(f"⚠️  Solution file not found at: {solution_file}")
-                # Wait a bit longer in case backend is still writing
-                import time
-                time.sleep(2)
-                if not os.path.exists(solution_file):
-                    print("⚠️  File still not found after waiting")
+            import requests
+
+            print(f"Fetching solution from: {BackendHandler.BASE_URL}/api/solution")
+
+            response = requests.get(
+                f"{BackendHandler.BASE_URL}/api/solution",
+                timeout=30  # 30 second timeout
+            )
+
+            if response.status_code == 200:
+                solution = response.json()
+
+                # Validate solution structure
+                if not isinstance(solution, dict):
+                    print("❌ Invalid solution format: not a dictionary")
                     return None
-            
-            # Read and parse JSON file
-            with open(solution_file, 'r', encoding='utf-8') as f:
-                solution = json.load(f)
-            
-            # Validate solution structure
-            if not isinstance(solution, dict):
-                print("❌ Invalid solution format: not a dictionary")
+
+                wave_count = len([k for k in solution.keys() if k != 'summary'])
+                print(f"✅ Successfully loaded solution with {wave_count} waves from API")
+
+                return solution
+            else:
+                print(f"❌ Failed to fetch solution: HTTP {response.status_code}")
+                if response.status_code == 404:
+                    print("   Solution not yet available - backend may still be processing")
                 return None
-            
-            wave_count = len([k for k in solution.keys() if k != 'summary'])
-            print(f"✅ Successfully loaded initial solution with {wave_count} waves")
-            
-            return solution
-            
-        except json.JSONDecodeError as e:
-            print(f"❌ Error parsing JSON in initial solution: {e}")
+
+        except requests.exceptions.Timeout:
+            print("❌ Timeout fetching solution from backend API")
             return None
-        except FileNotFoundError:
-            print(f"❌ Initial solution file not found")
+        except requests.exceptions.ConnectionError:
+            print("❌ Connection error - cannot reach backend API")
+            return None
+        except json.JSONDecodeError as e:
+            print(f"❌ Error parsing JSON response: {e}")
             return None
         except Exception as e:
-            print(f"❌ Error loading initial solution file: {e}")
+            print(f"❌ Error loading solution from API: {e}")
             import traceback
             traceback.print_exc()
             return None

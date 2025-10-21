@@ -6,6 +6,7 @@ FILE LOCATION: frontend/widgets/vehicle_control.py
 """
 import os
 import json
+import time
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, 
                            QListWidget, QListWidgetItem, QPushButton, QHBoxLayout)
 from PyQt5.QtCore import Qt, QTimer
@@ -20,11 +21,9 @@ class VehicleControlPanel(QWidget):
         self.vehicle_data_cache = {}
         self.init_ui()
         
-        # Auto-refresh timer
-        self.refresh_timer = QTimer()
-        self.refresh_timer.timeout.connect(self.refresh_vehicle_data)
-        self.refresh_timer.start(5000)  # Refresh every 5 seconds
-        
+        self.backend_complete = False  # Flag to track if backend processing is done
+        self.solution_fetched = False  # Track if we've already fetched solution
+
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
@@ -137,17 +136,30 @@ class VehicleControlPanel(QWidget):
         status_layout.addWidget(self.status_list, 1)
         layout.addWidget(status_group, 1)
         
-        # Load initial data
-        self.load_backend_solution()
+        # No initial load - wait for main window to trigger loading after backend completion
     
     def toggle_auto_refresh(self):
-        """Toggle auto-refresh timer"""
+        """Toggle auto-refresh timer - only works after backend completion"""
+        if not self.backend_complete:
+            print("[VehicleControlPanel] Cannot toggle auto-refresh - backend processing not complete")
+            return
+
         if self.auto_refresh_btn.isChecked():
-            self.refresh_timer.start(5000)
+            if self.refresh_timer:
+                self.refresh_timer.start(self.poll_interval)
             self.auto_refresh_btn.setText("⏸ Auto-Refresh")
         else:
-            self.refresh_timer.stop()
+            if self.refresh_timer:
+                self.refresh_timer.stop()
             self.auto_refresh_btn.setText("▶ Auto-Refresh")
+
+    def _start_adaptive_polling(self):
+        """Start adaptive polling once backend processing is complete"""
+        if self.refresh_timer is None:
+            self.refresh_timer = QTimer()
+            self.refresh_timer.timeout.connect(self.refresh_vehicle_data)
+            self.refresh_timer.start(self.poll_interval)
+            print(f"[VehicleControlPanel] Started adaptive polling every {self.poll_interval//1000}s")
     
     def load_backend_solution(self):
         """Load backend solution data"""
@@ -156,36 +168,117 @@ class VehicleControlPanel(QWidget):
             solution = None
             if self.parent_window and hasattr(self.parent_window, 'solution'):
                 solution = self.parent_window.solution
-            
-            # If no solution in parent, try file
+
+            # If no solution in parent, try API - only after backend completion
             if not solution:
-                backend_folder = self.get_backend_folder_path()
-                if backend_folder:
-                    solution_file = os.path.join(backend_folder, 'solution.json')
-                    if os.path.exists(solution_file):
-                        with open(solution_file, 'r') as f:
-                            solution = json.load(f)
-            
+                try:
+                    import requests
+
+                    # Don't poll if backend processing not complete
+                    if not self.backend_complete:
+                        # Check if backend has completed by looking for solution
+                        response = requests.get(
+                            "https://trispark.onrender.com/api/solution",
+                            timeout=15
+                        )
+
+                        if response.status_code == 200:
+                            solution = response.json()
+                            if solution:
+                                print("[VehicleControlPanel] Backend processing complete - fetching solution once")
+                                self.backend_complete = True
+                        # Backend not ready yet
+                        return
+
+                    # Backend complete - use cached solution if already fetched
+                    if self.solution_fetched and self.current_solution:
+                        solution = self.current_solution
+                    else:
+                        # First time fetching after backend completion
+                        response = requests.get(
+                            "https://trispark.onrender.com/api/solution",
+                            timeout=15
+                        )
+
+                        if response.status_code == 200:
+                            solution = response.json()
+                            if solution:
+                                self.solution_fetched = True
+                        elif response.status_code == 404:
+                            # Solution disappeared - reset backend complete flag
+                            self.backend_complete = False
+                            self.solution_fetched = False
+                            if self.refresh_timer:
+                                self.refresh_timer.stop()
+                                self.refresh_timer = None
+                        else:
+                            print(f"Failed to fetch solution: HTTP {response.status_code}")
+
+                except requests.exceptions.Timeout:
+                    print("Timeout fetching solution from API")
+                except requests.exceptions.ConnectionError:
+                    print("Connection error - cannot reach backend API")
+                except Exception as e:
+                    print(f"Error fetching solution: {e}")
+
             if solution:
                 self.current_solution = solution
                 self.display_backend_vehicles(solution)
             else:
                 self.show_no_solution_message()
-                
+
         except Exception as e:
             print(f"Error loading backend solution: {e}")
             self.show_error_message(str(e))
     
     def refresh_vehicle_data(self):
-        """Refresh vehicle data if vehicles are running"""
-        if self.parent_window and hasattr(self.parent_window, 'vehicle_manager'):
-            vm = self.parent_window.vehicle_manager
-            if vm.vehicles_started and vm.vehicles:
-                # Update with live data
-                self.update_live_vehicle_status(vm.vehicles)
-            elif self.current_solution:
-                # Show backend assignments
-                self.display_backend_vehicles(self.current_solution)
+        """Adaptive refresh of vehicle data based on current state"""
+        try:
+            changed = False
+
+            if self.parent_window and hasattr(self.parent_window, 'vehicle_manager'):
+                vm = self.parent_window.vehicle_manager
+                if vm.vehicles_started and vm.vehicles:
+                    # Update with live data - always refresh when vehicles are active
+                    self.update_live_vehicle_status(vm.vehicles)
+                    changed = True
+                elif self.current_solution:
+                    # Show backend assignments - check if solution changed
+                    solution_str = json.dumps(self.current_solution, sort_keys=True)
+                    solution_hash = hash(solution_str)
+
+                    if solution_hash != getattr(self, 'last_solution_hash', None):
+                        self.last_solution_hash = solution_hash
+                        self.display_backend_vehicles(self.current_solution)
+                        changed = True
+
+            # Adjust polling based on whether data changed
+            if changed:
+                self.consecutive_unchanged = 0
+                self._adjust_poll_interval(faster=True)
+            else:
+                self.consecutive_unchanged += 1
+                self._adjust_poll_interval(faster=False)
+
+        except Exception as e:
+            print(f"[VehicleControlPanel] Error refreshing vehicle data: {e}")
+
+    def _adjust_poll_interval(self, faster=False):
+        """Adjust polling interval based on data change frequency"""
+        if faster:
+            # Speed up when data changes
+            self.poll_interval = max(3000, self.poll_interval // 2)  # Minimum 3 seconds for vehicle control
+        else:
+            # Slow down when data unchanged
+            if self.consecutive_unchanged > 3:
+                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 1.5)
+            elif self.consecutive_unchanged > 8:
+                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 2)
+
+        # Apply new interval
+        if self.poll_interval != self.refresh_timer.interval():
+            self.refresh_timer.setInterval(int(self.poll_interval))
+            print(f"[VehicleControlPanel] Adjusted polling to {self.poll_interval//1000}s")
     
     def display_backend_vehicles(self, solution):
         """Display vehicle assignments from backend solution"""

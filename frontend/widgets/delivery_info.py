@@ -6,6 +6,7 @@ FILE LOCATION: frontend/widgets/delivery_info.py
 """
 import os
 import json
+import time
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QLabel, 
                            QListWidget, QGridLayout)
 from PyQt5.QtCore import Qt, QTimer
@@ -23,13 +24,10 @@ class DeliveryInfoWidget(QWidget):
         self.last_solution_hash = None
         self.init_ui()
         
-        # Setup continuous polling
-        self.refresh_timer = QTimer()
-        self.refresh_timer.timeout.connect(self.periodic_load_solution)
-        self.refresh_timer.start(2000)  # Check every 2 seconds
-        
-        # Initial load
-        QTimer.singleShot(500, self.load_backend_solution)
+        self.backend_complete = False  # Flag to track if backend processing is done
+        self.solution_fetched = False  # Track if we've already fetched solution
+
+        # No initial load - wait for main window to trigger loading after backend completion
         
     def init_ui(self):
         """Initialize UI matching original design"""
@@ -176,23 +174,50 @@ class DeliveryInfoWidget(QWidget):
             return False
     
     def periodic_load_solution(self):
-        """Continuously check for updated solution"""
+        """Adaptive polling for solution updates from API"""
         if self._widget_destroyed:
             return
-        
+
         try:
             solution = self._get_solution()
             if solution:
-                # Check if solution changed
                 solution_str = json.dumps(solution, sort_keys=True)
                 solution_hash = hash(solution_str)
-                
+
                 if solution_hash != self.last_solution_hash:
+                    # Solution changed - reset polling to faster interval
                     self.last_solution_hash = solution_hash
                     self.current_solution = solution
                     self.display_solution_data(solution)
+                    self.consecutive_unchanged = 0
+                    self._adjust_poll_interval(faster=True)
+                    print(f"[DeliveryInfoWidget] Solution updated - hash: {solution_hash}, polling every {self.poll_interval//1000}s")
+                else:
+                    # Solution unchanged - gradually slow down polling
+                    self.consecutive_unchanged += 1
+                    self._adjust_poll_interval(faster=False)
+            else:
+                # No solution available - keep current polling
+                pass
         except Exception as e:
-            pass  # Silent fail for polling
+            # On error, don't change polling interval
+            pass
+
+    def _adjust_poll_interval(self, faster=False):
+        """Adjust polling interval based on solution change frequency"""
+        if faster:
+            # Speed up when solution changes
+            self.poll_interval = max(2000, self.poll_interval // 2)  # Minimum 2 seconds
+        else:
+            # Slow down when solution unchanged
+            if self.consecutive_unchanged > 5:
+                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 1.5)
+            elif self.consecutive_unchanged > 10:
+                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 2)
+
+        # Apply new interval
+        if self.poll_interval != self.refresh_timer.interval():
+            self.refresh_timer.setInterval(int(self.poll_interval))
     
     def load_backend_solution(self):
         """Load and display actual backend solution data"""
@@ -213,24 +238,78 @@ class DeliveryInfoWidget(QWidget):
             self.show_waiting_message()
     
     def _get_solution(self):
-        """Get solution from parent or file"""
+        """Get solution from parent or API - only after backend completion"""
         # Try parent first
         if self.parent_window and hasattr(self.parent_window, 'solution'):
             if self.parent_window.solution:
                 return self.parent_window.solution
-        
-        # Try file
-        backend_folder = self.get_backend_folder_path()
-        if backend_folder:
-            solution_file = os.path.join(backend_folder, 'solution.json')
-            if os.path.exists(solution_file):
-                try:
-                    with open(solution_file, 'r') as f:
-                        return json.load(f)
-                except Exception as e:
-                    print(f"[DeliveryInfoWidget] Error reading solution file: {e}")
-        
+
+        # Try API
+        try:
+            import requests
+
+            # Don't poll if backend processing not complete
+            if not self.backend_complete:
+                # Check if backend has completed by looking for solution
+                response = requests.get(
+                    "https://trispark.onrender.com/api/solution",
+                    timeout=15
+                )
+
+                if response.status_code == 200:
+                    solution = response.json()
+                    if solution:
+                        print("[DeliveryInfoWidget] Backend processing complete - fetching solution once")
+                        self.backend_complete = True
+                        return solution
+                # Backend not ready yet
+                return None
+
+            # Backend complete - use cached solution if already fetched
+            if self.solution_fetched and self.current_solution:
+                return self.current_solution
+
+            # First time fetching after backend completion
+            response = requests.get(
+                "https://trispark.onrender.com/api/solution",
+                timeout=15
+            )
+
+            if response.status_code == 200:
+                solution = response.json()
+                if solution:
+                    self.solution_fetched = True
+                    return solution
+            elif response.status_code == 404:
+                # Solution disappeared - reset backend complete flag
+                self.backend_complete = False
+                self.solution_fetched = False
+                if self.refresh_timer:
+                    self.refresh_timer.stop()
+                    self.refresh_timer = None
+                return None
+            else:
+                print(f"[DeliveryInfoWidget] Failed to fetch solution: HTTP {response.status_code}")
+                return None
+
+        except requests.exceptions.Timeout:
+            print("[DeliveryInfoWidget] Timeout fetching solution from API")
+            return None
+        except requests.exceptions.ConnectionError:
+            print("[DeliveryInfoWidget] Connection error - cannot reach backend API")
+            return None
+        except Exception as e:
+            print(f"[DeliveryInfoWidget] Error fetching solution: {e}")
+
         return None
+
+    def _start_adaptive_polling(self):
+        """Start adaptive polling once backend processing is complete"""
+        if self.refresh_timer is None:
+            self.refresh_timer = QTimer()
+            self.refresh_timer.timeout.connect(self.periodic_load_solution)
+            self.refresh_timer.start(self.poll_interval)
+            print(f"[DeliveryInfoWidget] Started adaptive polling every {self.poll_interval//1000}s")
     
     def display_solution_data(self, solution):
         """Display backend solution data - WORKS WITH ACTUAL STRUCTURE"""
