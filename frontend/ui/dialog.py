@@ -265,10 +265,11 @@ class DepotSelectionWindow(QDialog):
         map_container.setStyleSheet("QFrame { border: 2px solid #404040; border-radius: 8px; }")
         map_container.setMinimumHeight(750)
         map_layout = QVBoxLayout(map_container)
-        map_layout.setContentsMargins(3, 3, 3, 3)
+        map_layout.setContentsMargins(0, 0, 0, 0)  # Changed from 3, 3, 3, 3
         
         # Map view
         self.map_view = QWebEngineView()
+        self.map_view.setStyleSheet("QWebEngineView { border: none; }")  # Add this line
         self.map_view.loadFinished.connect(self.on_map_ready)
         map_layout.addWidget(self.map_view)
         
@@ -418,6 +419,7 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
             return
             
         self.map_ready = True
+        self.inject_scrollbar_css()
         
         suggested_locations = [
             {
@@ -476,6 +478,33 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
             print("Enhanced depot selection map initialized successfully!")
         except Exception as e:
             print(f"Error initializing map: {e}")
+            
+    def inject_scrollbar_css(self):
+        """Inject CSS to hide scrollbars"""
+        css = """
+        body { 
+            overflow: hidden !important; 
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        html { 
+            overflow: hidden !important; 
+        }
+        #map { 
+            overflow: hidden !important; 
+        }
+        ::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+        }
+        """
+        js_code = f"""
+        var style = document.createElement('style');
+        style.innerHTML = `{css}`;
+        document.head.appendChild(style);
+        """
+        self.map_view.page().runJavaScript(js_code)
     
     def setup_js_callback(self):
         """Setup JavaScript callback for depot selection"""

@@ -1,15 +1,23 @@
 """
-Analytics Dashboard Widget - LOADS LIVE SOLUTION.JSON FROM BACKEND
-Displays all feasible delivery performance analytics graphs
+Analytics Dashboard Widget - PERFECTLY FIXED VERSION
+All text labels properly visible, sized, and positioned
+NO overlapping, NO cutoff text, consistent styling
 """
 import os
 import json
+import numpy as np
+import pandas as pd
+import seaborn as sns
 import time
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
                             QScrollArea, QGroupBox)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+
+# Set seaborn style
+sns.set_theme(style="darkgrid")
+sns.set_palette("husl")
 
 
 class AnalyticsDashboard(QWidget):
@@ -71,7 +79,7 @@ class AnalyticsDashboard(QWidget):
             self.container = QWidget()
             self.container_layout = QVBoxLayout(self.container)
             self.container_layout.setContentsMargins(10, 10, 10, 10)
-            self.container_layout.setSpacing(20)
+            self.container_layout.setSpacing(15)
             
             scroll_area.setWidget(self.container)
             layout.addWidget(scroll_area)
@@ -243,10 +251,13 @@ class AnalyticsDashboard(QWidget):
             # Build analytics data
             analytics = self._process_analytics()
             
-            # Create graph sections
-            self._create_efficiency_section(analytics)
-            self._create_wave_metrics_section(analytics)
-            self._create_distribution_section(analytics)
+            # Create graph sections with properly sized charts
+            self._create_vehicle_distribution_pie(analytics)
+            self._create_efficiency_comparison_bar(analytics)
+            self._create_distance_histogram(analytics)
+            self._create_wave_metrics_line(analytics)
+            self._create_cost_analysis_box(analytics)
+            self._create_capacity_utilization_heatmap(analytics)
             self._create_summary_section(analytics)
             
             # Add stretch
@@ -362,125 +373,158 @@ class AnalyticsDashboard(QWidget):
         
         return waves
     
-    def _create_efficiency_section(self, analytics):
-        """Create efficiency metrics section"""
+    def _create_vehicle_distribution_pie(self, analytics):
+        """Create pie chart - COMPACT SIZE"""
         try:
-            group = self._create_group_box("Comparison of Efficiency Metrics (Drone vs. Truck)")
+            group = self._create_group_box("Vehicle Type Distribution")
             
             efficiency = analytics['efficiency']
-            if not efficiency.get('Drone'):
+            routes = efficiency.get('all_routes', [])
+            
+            if not routes:
+                group.layout().addWidget(QLabel("No data available"))
+                self.container_layout.addWidget(group)
+                return
+            
+            df = pd.DataFrame(routes)
+            type_counts = df['type'].value_counts()
+            
+            fig = Figure(figsize=(8, 4), dpi=100, facecolor='#2a2a2a')
+            ax = fig.add_subplot(111)
+            
+            colors = ['#3b82f6', '#10b981', '#f97316']
+            explode = [0.05] * len(type_counts)
+            
+            wedges, texts, autotexts = ax.pie(
+                type_counts.values, 
+                labels=type_counts.index,
+                autopct='%1.1f%%',
+                colors=colors,
+                startangle=90,
+                explode=explode,
+                textprops={'fontsize': 9, 'weight': 'bold'},
+                pctdistance=0.75
+            )
+            
+            for autotext in autotexts:
+                autotext.set_color('white')
+                autotext.set_fontsize(10)
+                autotext.set_weight('bold')
+            
+            for text in texts:
+                text.set_color('white')
+                text.set_fontsize(9)
+                text.set_weight('bold')
+            
+            ax.set_title('Vehicle Type Distribution', 
+                        color='#ff6b35', fontsize=12, fontweight='bold', pad=10)
+            
+            fig.tight_layout(pad=0.8)
+            canvas = FigureCanvas(fig)
+            canvas.setMinimumHeight(280)
+            canvas.setMaximumHeight(280)
+            group.layout().addWidget(canvas)
+            
+            self.container_layout.addWidget(group)
+            
+        except Exception as e:
+            print(f"Error creating vehicle distribution pie: {e}")
+    
+    def _create_efficiency_comparison_bar(self, analytics):
+        """Create horizontal bar charts - FIXED LEFT MARGIN"""
+        try:
+            group = self._create_group_box("Efficiency Metrics")
+            
+            efficiency = analytics['efficiency']
+            
+            data = []
+            for vtype in ['Drone', 'E-Truck', 'F-Truck']:
+                if vtype in efficiency:
+                    data.append({
+                        'Vehicle': vtype,
+                        'Cost': efficiency[vtype].get('avg_cost_per_node', 0),
+                        'Distance': efficiency[vtype].get('avg_distance_per_node', 0)
+                    })
+            
+            if not data:
                 group.layout().addWidget(QLabel("No efficiency data available"))
                 self.container_layout.addWidget(group)
                 return
             
-            # Average Cost per Delivery
-            fig = Figure(figsize=(12, 4), dpi=80, facecolor='#2a2a2a')
-            ax = fig.add_subplot(111)
+            df = pd.DataFrame(data)
             
-            types = []
-            costs = []
-            for vtype in ['Drone', 'E-Truck', 'F-Truck']:
-                if vtype in efficiency:
-                    types.append(vtype)
-                    costs.append(efficiency[vtype].get('avg_cost_per_node', 0))
+            # Keep original size but fix margins
+            fig = Figure(figsize=(8, 7), dpi=100, facecolor='#2a2a2a')
             
-            bars = ax.bar(types, costs, color=['#3b82f6', '#10b981', '#f97316'], width=0.6)
-            ax.set_ylabel('Avg Cost per Node ($)', color='#cccccc', fontsize=11, fontweight='bold')
-            ax.set_title('Average Cost per Delivery', color='#ff6b35', fontsize=12, fontweight='bold', pad=15)
-            ax.set_facecolor('#1a1a1a')
-            ax.tick_params(colors='#cccccc', labelsize=10)
-            ax.grid(axis='y', alpha=0.3, color='#444444', linestyle='--')
-            for spine in ax.spines.values():
-                spine.set_color('#444444')
-            fig.tight_layout()
+            # Cost comparison - TOP
+            ax1 = fig.add_subplot(211)
+            bars1 = ax1.barh(df['Vehicle'], df['Cost'],
+                            color=['#3b82f6', '#10b981', '#f97316'],
+                            height=0.5, edgecolor='white', linewidth=1.2)
             
-            canvas = FigureCanvas(fig)
-            canvas.setMinimumHeight(280)
-            group.layout().addWidget(canvas)
+            # Value labels inside bars
+            for bar in bars1:
+                width = bar.get_width()
+                ax1.text(width/2, bar.get_y() + bar.get_height()/2,
+                        f'${width:.1f}',
+                        ha='center', va='center',
+                        color='white', fontsize=8, fontweight='bold')
             
-            # Average Distance per Delivery
-            fig2 = Figure(figsize=(12, 4), dpi=80, facecolor='#2a2a2a')
-            ax2 = fig2.add_subplot(111)
+            ax1.set_xlabel('Cost per Node ($)', 
+                          color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax1.set_title('Cost Efficiency', 
+                         color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
+            ax1.set_facecolor('#1a1a1a')
+            ax1.tick_params(colors='#ffffff', labelsize=8, pad=3)
+            ax1.grid(axis='x', alpha=0.3, color='#555555', linestyle='--')
+            ax1.set_xlim(0, max(df['Cost']) * 1.15)
             
-            distances = []
-            for vtype in types:
-                distances.append(efficiency[vtype].get('avg_distance_per_node', 0))
+            for spine in ax1.spines.values():
+                spine.set_color('#555555')
             
-            ax2.bar(types, distances, color=['#3b82f6', '#10b981', '#f97316'], width=0.6)
-            ax2.set_ylabel('Avg Distance per Node (km)', color='#cccccc', fontsize=11, fontweight='bold')
-            ax2.set_title('Average Distance per Delivery', color='#ff6b35', fontsize=12, fontweight='bold', pad=15)
+            # Distance comparison - BOTTOM
+            ax2 = fig.add_subplot(212)
+            bars2 = ax2.barh(df['Vehicle'], df['Distance'],
+                            color=['#3b82f6', '#10b981', '#f97316'],
+                            height=0.5, edgecolor='white', linewidth=1.2)
+            
+            # Value labels inside bars
+            for bar in bars2:
+                width = bar.get_width()
+                ax2.text(width/2, bar.get_y() + bar.get_height()/2,
+                        f'{width:.1f}km',
+                        ha='center', va='center',
+                        color='white', fontsize=8, fontweight='bold')
+            
+            ax2.set_xlabel('Distance per Node (km)',
+                          color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax2.set_title('Distance Efficiency',
+                         color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
             ax2.set_facecolor('#1a1a1a')
-            ax2.tick_params(colors='#cccccc', labelsize=10)
-            ax2.grid(axis='y', alpha=0.3, color='#444444', linestyle='--')
+            ax2.tick_params(colors='#ffffff', labelsize=8, pad=3)
+            ax2.grid(axis='x', alpha=0.3, color='#555555', linestyle='--')
+            ax2.set_xlim(0, max(df['Distance']) * 1.15)
+            
             for spine in ax2.spines.values():
-                spine.set_color('#444444')
-            fig2.tight_layout()
+                spine.set_color('#555555')
             
-            canvas2 = FigureCanvas(fig2)
-            canvas2.setMinimumHeight(280)
-            group.layout().addWidget(canvas2)
+            # FIXED: More left margin to show y-axis labels
+            fig.subplots_adjust(left=0.18, right=0.97, top=0.94, bottom=0.08, hspace=0.40)
             
-            self.container_layout.addWidget(group)
-            
-        except Exception as e:
-            print(f"Error creating efficiency section: {e}")
-    
-    def _create_wave_metrics_section(self, analytics):
-        """Create wave metrics section"""
-        try:
-            group = self._create_group_box("Breakdown of Total Delivery Metrics (Waves)")
-            
-            waves = analytics['waves']
-            if not waves:
-                group.layout().addWidget(QLabel("No wave data available"))
-                self.container_layout.addWidget(group)
-                return
-            
-            fig = Figure(figsize=(12, 5), dpi=80, facecolor='#2a2a2a')
-            ax = fig.add_subplot(111)
-            
-            wave_names = list(waves.keys())
-            distances = [waves[w]['distance'] for w in wave_names]
-            costs = [waves[w]['cost'] for w in wave_names]
-            
-            x = range(len(wave_names))
-            ax.bar([i - 0.2 for i in x], distances, width=0.4, label='Distance (km)', color='#3b82f6', edgecolor='#555555')
-            ax2 = ax.twinx()
-            ax2.plot([i + 0.2 for i in x], costs, 'o-', label='Cost ($)', color='#f97316', linewidth=2.5, markersize=10)
-            
-            ax.set_ylabel('Distance (km)', color='#cccccc', fontsize=11, fontweight='bold')
-            ax2.set_ylabel('Cost ($)', color='#cccccc', fontsize=11, fontweight='bold')
-            ax.set_title('Total Distance & Cost per Wave', color='#ff6b35', fontsize=12, fontweight='bold', pad=15)
-            ax.set_xticks(x)
-            ax.set_xticklabels(wave_names, fontsize=10)
-            ax.set_facecolor('#1a1a1a')
-            ax.tick_params(colors='#cccccc', labelsize=10)
-            ax2.tick_params(colors='#cccccc', labelsize=10)
-            ax.grid(axis='y', alpha=0.3, color='#444444', linestyle='--')
-            for spine in ax.spines.values():
-                spine.set_color('#444444')
-            for spine in ax2.spines.values():
-                spine.set_color('#444444')
-            
-            # Add legend
-            lines1, labels1 = ax.get_legend_handles_labels()
-            lines2, labels2 = ax2.get_legend_handles_labels()
-            ax.legend(lines1 + lines2, labels1 + labels2, loc='upper left', framealpha=0.9, facecolor='#2a2a2a', edgecolor='#555555')
-            
-            fig.tight_layout()
             canvas = FigureCanvas(fig)
-            canvas.setMinimumHeight(320)
+            canvas.setMinimumHeight(550)
+            canvas.setMaximumHeight(550)
             group.layout().addWidget(canvas)
             
             self.container_layout.addWidget(group)
             
         except Exception as e:
-            print(f"Error creating wave metrics section: {e}")
+            print(f"Error creating efficiency comparison: {e}")
     
-    def _create_distribution_section(self, analytics):
-        """Create distribution analysis section"""
+    def _create_distance_histogram(self, analytics):
+        """Create histogram - FIXED LEFT MARGIN"""
         try:
-            group = self._create_group_box("Distribution-focused Analysis")
+            group = self._create_group_box("Distance Distribution")
             
             efficiency = analytics['efficiency']
             routes = efficiency.get('all_routes', [])
@@ -490,65 +534,369 @@ class AnalyticsDashboard(QWidget):
                 self.container_layout.addWidget(group)
                 return
             
-            distances = [r['distance'] / max(1, r['nodes']) for r in routes]
+            df = pd.DataFrame(routes)
+            df['distance_per_node'] = df['distance'] / df['nodes'].replace(0, 1)
             
-            fig = Figure(figsize=(12, 4.5), dpi=80, facecolor='#2a2a2a')
+            fig = Figure(figsize=(8, 4), dpi=100, facecolor='#2a2a2a')
             ax = fig.add_subplot(111)
             
-            n, bins, patches = ax.hist(distances, bins=8, color='#8b5cf6', edgecolor='#cccccc', alpha=0.85)
-            ax.set_xlabel('Distance per Node (km)', color='#cccccc', fontsize=11, fontweight='bold')
-            ax.set_ylabel('Frequency', color='#cccccc', fontsize=11, fontweight='bold')
-            ax.set_title('Distribution of Delivery Distances', color='#ff6b35', fontsize=12, fontweight='bold', pad=15)
+            sns.histplot(data=df, x='distance_per_node', bins=15, kde=True,
+                        color='#8b5cf6', edgecolor='white', linewidth=0.8, 
+                        alpha=0.7, ax=ax,
+                        line_kws={'linewidth': 2, 'color': '#00ff88'})
+            
+            ax.set_xlabel('Distance per Node (km)', 
+                         color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax.set_ylabel('Frequency', 
+                         color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax.set_title('Delivery Distance Distribution', 
+                        color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
             ax.set_facecolor('#1a1a1a')
-            ax.tick_params(colors='#cccccc', labelsize=10)
-            ax.grid(axis='y', alpha=0.3, color='#444444', linestyle='--')
+            ax.tick_params(colors='#ffffff', labelsize=7, pad=2)
+            ax.grid(axis='both', alpha=0.3, color='#555555', linestyle='--')
+            
             for spine in ax.spines.values():
-                spine.set_color('#444444')
-            fig.tight_layout()
+                spine.set_color('#555555')
+            
+            # FIXED: More left margin for y-axis label
+            fig.subplots_adjust(left=0.18, right=0.97, top=0.90, bottom=0.15)
             
             canvas = FigureCanvas(fig)
-            canvas.setMinimumHeight(300)
+            canvas.setMinimumHeight(380)
+            canvas.setMaximumHeight(380)
             group.layout().addWidget(canvas)
             
             self.container_layout.addWidget(group)
             
         except Exception as e:
-            print(f"Error creating distribution section: {e}")
+            print(f"Error creating distance histogram: {e}")
+    
+    def _create_wave_metrics_line(self, analytics):
+        """Create line plot - FIXED MARGINS"""
+        try:
+            group = self._create_group_box("Wave Performance")
+            
+            waves = analytics['waves']
+            if not waves:
+                group.layout().addWidget(QLabel("No wave data available"))
+                self.container_layout.addWidget(group)
+                return
+            
+            wave_data = []
+            for wave_name, data in sorted(waves.items()):
+                wave_data.append({
+                    'Wave': wave_name.replace('wave_', 'W'),
+                    'Distance': data['distance'],
+                    'Cost': data['cost']
+                })
+            
+            df = pd.DataFrame(wave_data)
+            
+            fig = Figure(figsize=(8, 4.5), dpi=100, facecolor='#2a2a2a')
+            ax1 = fig.add_subplot(111)
+            
+            x_pos = range(len(df))
+            
+            # Plot Distance
+            line1 = ax1.plot(x_pos, df['Distance'], 
+                    marker='o', linewidth=2.5, markersize=8,
+                    color='#3b82f6', label='Distance (km)',
+                    markeredgecolor='white', markeredgewidth=1.5)
+            
+            # Create second y-axis
+            ax2 = ax1.twinx()
+            line2 = ax2.plot(x_pos, df['Cost'],
+                    marker='s', linewidth=2.5, markersize=8,
+                    color='#f97316', label='Cost ($)',
+                    markeredgecolor='white', markeredgewidth=1.5)
+            
+            # Compact labels positioned smartly
+            for i, (idx, row) in enumerate(df.iterrows()):
+                ax1.annotate(f"{row['Distance']:.1f}", 
+                           xy=(i, row['Distance']), 
+                           xytext=(0, 10),
+                           textcoords='offset points',
+                           ha='center', va='bottom',
+                           color='white', fontsize=7, fontweight='bold',
+                           bbox=dict(boxstyle='round,pad=0.2',
+                                   facecolor='#3b82f6', alpha=0.85,
+                                   edgecolor='white', linewidth=0.5))
+            
+            for i, (idx, row) in enumerate(df.iterrows()):
+                ax2.annotate(f"${row['Cost']:.0f}",
+                           xy=(i, row['Cost']),
+                           xytext=(0, -10),
+                           textcoords='offset points',
+                           ha='center', va='top',
+                           color='white', fontsize=7, fontweight='bold',
+                           bbox=dict(boxstyle='round,pad=0.2',
+                                   facecolor='#f97316', alpha=0.85,
+                                   edgecolor='white', linewidth=0.5))
+            
+            ax1.set_xticks(x_pos)
+            ax1.set_xticklabels(df['Wave'], fontsize=8)
+            ax1.set_xlabel('Wave', color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax1.set_ylabel('Distance (km)', color='#3b82f6', fontsize=9, fontweight='bold', labelpad=5)
+            ax2.set_ylabel('Cost ($)', color='#f97316', fontsize=9, fontweight='bold', labelpad=5)
+            
+            ax1.set_title('Distance & Cost Trends', 
+                         color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
+            
+            ax1.set_ylim(0, max(df['Distance']) * 1.3)
+            ax2.set_ylim(0, max(df['Cost']) * 1.3)
+            
+            ax1.set_facecolor('#1a1a1a')
+            ax1.tick_params(colors='#ffffff', labelsize=7, pad=2)
+            ax2.tick_params(colors='#ffffff', labelsize=7, pad=2)
+            ax1.tick_params(axis='y', labelcolor='#3b82f6')
+            ax2.tick_params(axis='y', labelcolor='#f97316')
+            ax1.grid(alpha=0.3, color='#555555', linestyle='--')
+            
+            for spine in ax1.spines.values():
+                spine.set_color('#555555')
+            for spine in ax2.spines.values():
+                spine.set_color('#555555')
+            
+            lines = line1 + line2
+            labels = [l.get_label() for l in lines]
+            ax1.legend(lines, labels,
+                      loc='upper left', fontsize=8,
+                      facecolor='#2a2a2a', edgecolor='#555555',
+                      framealpha=0.95)
+            
+            # FIXED: More space on right for Cost ($) y-axis label
+            fig.subplots_adjust(left=0.15, right=0.85, top=0.90, bottom=0.15)
+            
+            canvas = FigureCanvas(fig)
+            canvas.setMinimumHeight(450)
+            canvas.setMaximumHeight(450)
+            group.layout().addWidget(canvas)
+            
+            self.container_layout.addWidget(group)
+            
+        except Exception as e:
+            print(f"Error creating wave metrics: {e}")
+    
+    def _create_cost_analysis_box(self, analytics):
+        """Create box plot - FIXED LEFT MARGIN"""
+        try:
+            group = self._create_group_box("Cost Distribution")
+            
+            efficiency = analytics['efficiency']
+            routes = efficiency.get('all_routes', [])
+            
+            if not routes:
+                group.layout().addWidget(QLabel("No route data available"))
+                self.container_layout.addWidget(group)
+                return
+            
+            df = pd.DataFrame(routes)
+            df['cost_per_node'] = df['cost'] / df['nodes'].replace(0, 1)
+            df = df[df['cost_per_node'] > 0]
+            
+            if len(df) == 0:
+                group.layout().addWidget(QLabel("No valid cost data"))
+                self.container_layout.addWidget(group)
+                return
+            
+            fig = Figure(figsize=(8, 4.5), dpi=100, facecolor='#2a2a2a')
+            ax = fig.add_subplot(111)
+            
+            vehicle_types = ['Drone', 'E-Truck', 'F-Truck']
+            data_to_plot = [df[df['type'] == vt]['cost_per_node'].values 
+                           for vt in vehicle_types if vt in df['type'].values]
+            labels = [vt for vt in vehicle_types if vt in df['type'].values]
+            
+            bp = ax.boxplot(data_to_plot, labels=labels,
+                           patch_artist=True, widths=0.5,
+                           showmeans=True,
+                           meanprops=dict(marker='D', markerfacecolor='yellow',
+                                        markeredgecolor='black', markersize=6))
+            
+            colors_dict = {'Drone': '#3b82f6', 'E-Truck': '#10b981', 'F-Truck': '#f97316'}
+            for i, label in enumerate(labels):
+                bp['boxes'][i].set_facecolor(colors_dict[label])
+                bp['boxes'][i].set_alpha(0.7)
+                bp['boxes'][i].set_linewidth(1.2)
+                bp['boxes'][i].set_edgecolor('white')
+                bp['medians'][i].set_color('yellow')
+                bp['medians'][i].set_linewidth(2)
+            
+            for i, vtype in enumerate(labels):
+                y_data = df[df['type'] == vtype]['cost_per_node'].values
+                x_data = np.random.normal(i+1, 0.04, size=len(y_data))
+                ax.scatter(x_data, y_data, alpha=0.3, s=20,
+                          color='white', edgecolor='black', linewidth=0.3)
+            
+            for i, label in enumerate(labels):
+                median_val = np.median(df[df['type'] == label]['cost_per_node'])
+                ax.text(i+1.2, median_val, f'${median_val:.1f}',
+                       ha='left', va='center',
+                       color='white', fontsize=7, fontweight='bold',
+                       bbox=dict(boxstyle='round,pad=0.25',
+                               facecolor='#ff6b35', alpha=0.85,
+                               edgecolor='white', linewidth=0.8))
+            
+            ax.set_xlabel('Vehicle Type', color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax.set_ylabel('Cost per Node ($)', color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax.set_title('Cost Distribution',
+                        color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
+            ax.set_facecolor('#1a1a1a')
+            ax.tick_params(colors='#ffffff', labelsize=8, pad=2)
+            ax.grid(axis='y', alpha=0.3, color='#555555', linestyle='--')
+            ax.set_ylim(bottom=0)
+            
+            for spine in ax.spines.values():
+                spine.set_color('#555555')
+            
+            # FIXED: More left margin for y-axis label
+            fig.subplots_adjust(left=0.18, right=0.97, top=0.90, bottom=0.15)
+            
+            canvas = FigureCanvas(fig)
+            canvas.setMinimumHeight(420)
+            canvas.setMaximumHeight(420)
+            group.layout().addWidget(canvas)
+            
+            self.container_layout.addWidget(group)
+            
+        except Exception as e:
+            print(f"Error creating cost box plot: {e}")
+    
+    def _create_capacity_utilization_heatmap(self, analytics):
+        """Create heatmap - FIXED MARGINS"""
+        try:
+            group = self._create_group_box("Capacity Utilization")
+            
+            efficiency = analytics['efficiency']
+            routes = efficiency.get('all_routes', [])
+            
+            truck_routes = [r for r in routes if r['type'] in ['E-Truck','F-Truck']
+                          and 'weight_util' in r and 'volume_util' in r]
+            
+            if not truck_routes:
+                group.layout().addWidget(QLabel("No capacity data"))
+                self.container_layout.addWidget(group)
+                return
+            
+            df = pd.DataFrame(truck_routes)
+            util_data = df.groupby('type')[['weight_util', 'volume_util']].mean()
+            util_data = util_data.T
+            util_data.index = ['Weight %', 'Volume %']
+            
+            fig = Figure(figsize=(8, 4), dpi=100, facecolor='#2a2a2a')
+            ax = fig.add_subplot(111)
+            
+            im = ax.imshow(util_data.values, cmap='RdYlGn', aspect='auto',
+                          vmin=0, vmax=100)
+            
+            for i in range(len(util_data.index)):
+                for j in range(len(util_data.columns)):
+                    value = util_data.values[i, j]
+                    text = ax.text(j, i, f'{value:.1f}%',
+                                 ha="center", va="center",
+                                 color="black", fontsize=12, fontweight='bold')
+            
+            ax.set_xticks(range(len(util_data.columns)))
+            ax.set_yticks(range(len(util_data.index)))
+            ax.set_xticklabels(util_data.columns, fontsize=9, fontweight='bold', color='white')
+            ax.set_yticklabels(util_data.index, fontsize=9, fontweight='bold', color='white')
+            
+            ax.set_xlabel('Vehicle Type', color='#ffffff', fontsize=9, fontweight='bold', labelpad=8)
+            ax.set_ylabel('Metric', color='#ffffff', fontsize=9, fontweight='bold', labelpad=8)
+            ax.set_title('Capacity Utilization (%)',
+                        color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
+            
+            cbar = fig.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
+            cbar.set_label('Utilization %', color='white', fontsize=8, fontweight='bold')
+            cbar.ax.tick_params(colors='white', labelsize=7)
+            cbar.outline.set_edgecolor('#555555')
+            cbar.outline.set_linewidth(1.2)
+            
+            ax.set_facecolor('#1a1a1a')
+            fig.patch.set_facecolor('#2a2a2a')
+            
+            # FIXED: More left margin for Weight % and Volume % labels
+            fig.subplots_adjust(left=0.22, right=0.88, top=0.88, bottom=0.15)
+            
+            canvas = FigureCanvas(fig)
+            canvas.setMinimumHeight(350)
+            canvas.setMaximumHeight(350)
+            group.layout().addWidget(canvas)
+            
+            self.container_layout.addWidget(group)
+            
+        except Exception as e:
+            print(f"Error creating capacity heatmap: {e}")
     
     def _create_summary_section(self, analytics):
-        """Create summary metrics section"""
+        """Create summary metrics section - STYLED BOARD"""
         try:
-            group = self._create_group_box("Overall Summary Metrics")
+            group = self._create_group_box("Overall Summary")
             
             summary = analytics['summary']
             
             metrics_html = f"""
-            <table style='width:100%; color:#cccccc; background-color:#1a1a1a; border-collapse: collapse;'>
-                <tr style='border-bottom: 1px solid #444444;'>
-                    <td style='padding: 12px; font-weight: bold;'>Total Distance</td>
-                    <td style='padding: 12px; color:#3b82f6; text-align: right; font-weight: bold;'>{summary['total_distance']:.2f} km</td>
-                </tr>
-                <tr style='border-bottom: 1px solid #444444;'>
-                    <td style='padding: 12px; font-weight: bold;'>Total Cost</td>
-                    <td style='padding: 12px; color:#10b981; text-align: right; font-weight: bold;'>${summary['total_cost']:.2f}</td>
-                </tr>
-                <tr style='border-bottom: 1px solid #444444;'>
-                    <td style='padding: 12px; font-weight: bold;'>Total Nodes</td>
-                    <td style='padding: 12px; color:#8b5cf6; text-align: right; font-weight: bold;'>{summary['total_nodes']}</td>
-                </tr>
-                <tr style='border-bottom: 1px solid #444444;'>
-                    <td style='padding: 12px; font-weight: bold;'>Avg Cost/Node</td>
-                    <td style='padding: 12px; color:#f97316; text-align: right; font-weight: bold;'>${summary['avg_cost_per_node']:.2f}</td>
-                </tr>
-                <tr>
-                    <td style='padding: 12px; font-weight: bold;'>Success Rate</td>
-                    <td style='padding: 12px; color:#10b981; text-align: right; font-weight: bold;'>{summary['success_rate']:.1f}%</td>
-                </tr>
-            </table>
+            <div style='background-color: #1e1e1e; padding: 20px; border-radius: 10px; 
+                        border: 2px solid #3a3a3a; max-width: 100%;'>
+                <table style='width:100%; color:#ffffff; border-collapse: separate; 
+                              border-spacing: 0 10px; font-size: 14px;'>
+                    <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
+                        <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px; 
+                                   border-left: 4px solid #3b82f6;'>
+                            📏 Total Distance
+                        </td>
+                        <td style='padding: 15px 20px; color:#3b82f6; text-align: right; 
+                                   font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
+                            {summary['total_distance']:.2f} km
+                        </td>
+                    </tr>
+                    <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
+                        <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px;
+                                   border-left: 4px solid #10b981;'>
+                            💰 Total Cost
+                        </td>
+                        <td style='padding: 15px 20px; color:#10b981; text-align: right; 
+                                   font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
+                            ${summary['total_cost']:.2f}
+                        </td>
+                    </tr>
+                    <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
+                        <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px;
+                                   border-left: 4px solid #8b5cf6;'>
+                            📍 Total Nodes
+                        </td>
+                        <td style='padding: 15px 20px; color:#8b5cf6; text-align: right; 
+                                   font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
+                            {summary['total_nodes']}
+                        </td>
+                    </tr>
+                    <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
+                        <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px;
+                                   border-left: 4px solid #f97316;'>
+                            📊 Avg Cost per Node
+                        </td>
+                        <td style='padding: 15px 20px; color:#f97316; text-align: right; 
+                                   font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
+                            ${summary['avg_cost_per_node']:.2f}
+                        </td>
+                    </tr>
+                    <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
+                        <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px;
+                                   border-left: 4px solid #10b981;'>
+                            ✅ Success Rate
+                        </td>
+                        <td style='padding: 15px 20px; color:#10b981; text-align: right; 
+                                   font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
+                            {summary['success_rate']:.1f}%
+                        </td>
+                    </tr>
+                </table>
+            </div>
             """
             
             label = QLabel(metrics_html)
-            label.setStyleSheet("background-color: #1a1a1a; padding: 0px; border-radius: 0px;")
+            label.setStyleSheet("background-color: transparent;")
+            label.setWordWrap(True)
             group.layout().addWidget(label)
             
             self.container_layout.addWidget(group)
@@ -557,26 +905,30 @@ class AnalyticsDashboard(QWidget):
             print(f"Error creating summary section: {e}")
     
     def _create_group_box(self, title):
-        """Create styled group box"""
+        """Create styled group box - FIT TO SIDEBAR WIDTH"""
         group = QGroupBox(title)
         group.setStyleSheet("""
             QGroupBox {
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
                 color: #ff6b35;
                 background-color: #2a2a2a;
-                padding: 15px;
-                border: 1px solid #444444;
-                border-radius: 5px;
+                padding: 20px;
+                border: 1px solid #3a3a3a;
+                border-radius: 4px;
                 margin-top: 10px;
+                min-width: 350px;
+                max-width: 450px;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
+                left: 15px;
+                padding: 0 8px 0 8px;
+                background-color: transparent;
             }
         """)
         layout = QVBoxLayout(group)
+        layout.setContentsMargins(15, 25, 15, 15)
         layout.setSpacing(10)
         return group
     
@@ -584,12 +936,22 @@ class AnalyticsDashboard(QWidget):
         """Show waiting message"""
         try:
             while self.container_layout.count():
-                self.container_layout.takeAt(0).widget().deleteLater()
+                item = self.container_layout.takeAt(0)
+                if item and item.widget():
+                    item.widget().deleteLater()
             
             waiting_group = self._create_group_box("Waiting for Solution Data")
-            label = QLabel("Waiting for backend solution.json...\n\nBackend optimization is processing")
+            label = QLabel("Waiting for backend solution.json...\n\n"
+                          "Backend optimization is processing your data.\n"
+                          "Charts will appear automatically once data is ready.")
             label.setAlignment(Qt.AlignCenter)
-            label.setStyleSheet("color: #cccccc; padding: 30px;")
+            label.setStyleSheet("""
+                color: #ffffff; 
+                padding: 35px; 
+                font-size: 13px;
+                font-weight: bold;
+                line-height: 1.5;
+            """)
             waiting_group.layout().addWidget(label)
             self.container_layout.addWidget(waiting_group)
             self.container_layout.addStretch()

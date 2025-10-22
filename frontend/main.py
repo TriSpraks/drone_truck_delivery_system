@@ -100,7 +100,7 @@ class MainContainer(QMainWindow):
         print("   • Toggle No-Fly Zones")
         print("   • Toggle Vehicles")
         print("   • Start/Stop Vehicle Movement")
-        print(f"\n🚀 Your Fleet ({total_vehicles} vehicles):")
+        print(f"\n Your Fleet ({total_vehicles} vehicles):")
         print(f"• Drones: {drones} units - Blue icons with dotted routes (60 km/h)")
         print(f"• Electric Trucks: {electric_trucks} units - Green icons (40 km/h)")
         print(f"• Fuel Trucks: {fuel_trucks} units - Orange icons (35 km/h)")
