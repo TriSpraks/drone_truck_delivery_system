@@ -7,7 +7,7 @@ FILE LOCATION: frontend/widgets/vehicle_control.py
 import os
 import json
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, 
-                           QListWidget, QListWidgetItem, QPushButton, QHBoxLayout)
+                           QListWidget, QListWidgetItem)
 from PyQt5.QtCore import Qt, QTimer
 
 
@@ -37,11 +37,11 @@ class VehicleControlPanel(QWidget):
                 font-size: 16px;
                 font-weight: bold;
                 color: #ffffff;
-                background-color: #333333;
+                background-color: #2a2a2a;
                 padding: 15px;
-                border-radius: 8px;
+                border-radius: 4px;
                 margin-top: 10px;
-                border: 2px solid #404040;
+                border: 1px solid #3a3a3a;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
@@ -50,52 +50,11 @@ class VehicleControlPanel(QWidget):
                 color: #ff6b35;
                 font-size: 16px;
                 font-weight: bold;
+                background-color: transparent;
             }
         """)
         
         status_layout = QVBoxLayout(status_group)
-        
-        # Control buttons
-        button_layout = QHBoxLayout()
-        
-        refresh_btn = QPushButton("🔄 Refresh")
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #8b5cf6;
-                color: white;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #a78bfa;
-            }
-        """)
-        refresh_btn.clicked.connect(self.load_backend_solution)
-        
-        self.auto_refresh_btn = QPushButton("⏸ Auto-Refresh")
-        self.auto_refresh_btn.setCheckable(True)
-        self.auto_refresh_btn.setChecked(True)
-        self.auto_refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #10b981;
-                color: white;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #34d399;
-            }
-            QPushButton:checked {
-                background-color: #ef4444;
-            }
-        """)
-        self.auto_refresh_btn.clicked.connect(self.toggle_auto_refresh)
-        
-        button_layout.addWidget(refresh_btn)
-        button_layout.addWidget(self.auto_refresh_btn)
-        status_layout.addLayout(button_layout)
         
         # Vehicle list
         self.status_list = QListWidget()
@@ -139,15 +98,6 @@ class VehicleControlPanel(QWidget):
         
         # Load initial data
         self.load_backend_solution()
-    
-    def toggle_auto_refresh(self):
-        """Toggle auto-refresh timer"""
-        if self.auto_refresh_btn.isChecked():
-            self.refresh_timer.start(5000)
-            self.auto_refresh_btn.setText("⏸ Auto-Refresh")
-        else:
-            self.refresh_timer.stop()
-            self.auto_refresh_btn.setText("▶ Auto-Refresh")
     
     def load_backend_solution(self):
         """Load backend solution data"""

@@ -297,7 +297,7 @@ class IndiaAirspaceMap(QMainWindow):
             QMessageBox.information(
                 self,
                 "Backend Ready",
-                f"✅ Backend optimization complete!\n\n"
+                f"Backend optimization complete!\n\n"
                 f"Waves: {len(self.waves_data)}\n"
                 f"Total vehicles: {sum(w['total_drones'] + w['total_trucks'] for w in self.waves_data)}\n\n"
                 f"Click 'Start Vehicles' to see optimized routes"

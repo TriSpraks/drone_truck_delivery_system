@@ -44,16 +44,21 @@ class DeliveryInfoWidget(QWidget):
                 QGroupBox {
                     font-size: 16px;
                     font-weight: bold;
-                    color: #ff6b35;
-                    background-color: #1a1a1a;
+                    color: #ffffff;
+                    background-color: #2a2a2a;
                     padding: 15px;
-                    border: none;
+                    border: 1px solid #3a3a3a;
+                    border-radius: 4px;
                     margin-top: 10px;
                 }
                 QGroupBox::title {
                     subcontrol-origin: margin;
                     left: 10px;
                     padding: 0 5px 0 5px;
+                    color: #ff6b35;
+                    font-size: 16px;
+                    font-weight: bold;
+                    background-color: transparent;
                 }
             """)
             
@@ -65,29 +70,33 @@ class DeliveryInfoWidget(QWidget):
             self.delivery_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             self.delivery_list.setStyleSheet("""
                 QListWidget {
-                    background-color: #2a2a2a;
-                    border: none;
-                    color: #e0e0e0;
-                    padding: 5px;
-                    font-size: 11px;
-                }
-                QListWidget::item {
-                    padding: 6px;
-                    margin: 2px 0;
-                    background-color: transparent;
-                    border: none;
-                }
-                QListWidget::item:selected {
-                    background-color: #3a3a3a;
-                }
-                QScrollBar:vertical {
-                    width: 8px;
-                    background: #2a2a2a;
-                }
-                QScrollBar::handle:vertical {
-                    background: #555555;
-                    border-radius: 4px;
-                }
+                background-color: #2d2d2d;
+                border: 1px solid #404040;
+                border-radius: 4px;
+                color: #e0e0e0;
+                padding: 5px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                margin: 2px;
+                background-color: #3a3a3a;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                color: #e0e0e0;
+            }
+            QListWidget::item:selected {
+                background-color: #ff6b35;
+                color: white;
+                border-color: #ff6b35;
+            }
+            QListWidget::item:hover {
+                background-color: #4d4d4d;
+                border-color: #ff6b35;
+            }
+            QScrollBar:vertical {
+                width: 12px;
+                border-radius: 5px;
+            }
             """)
             info_layout.addWidget(self.delivery_list)
             
@@ -97,24 +106,29 @@ class DeliveryInfoWidget(QWidget):
                 QGroupBox {
                     font-size: 16px;
                     font-weight: bold;
-                    color: #ff6b35;
-                    background-color: #1a1a1a;
+                    color: #ffffff;
+                    background-color: #2a2a2a;
                     padding: 15px;
-                    border: none;
+                    border: 1px solid #3a3a3a;
+                    border-radius: 4px;
                     margin-top: 10px;
                 }
                 QGroupBox::title {
                     subcontrol-origin: margin;
                     left: 10px;
                     padding: 0 5px 0 5px;
+                    color: #ff6b35;
+                    font-size: 16px;
+                    font-weight: bold;
+                    background-color: transparent;
                 }
             """)
             summary_layout = QGridLayout(summary_group)
-            summary_layout.setSpacing(8)
+            summary_layout.setSpacing(10)
             
-            # Labels matching original style
-            label_style = "color: #cccccc; font-size: 12px; font-weight: normal;"
-            value_style = "color: #ffffff; font-size: 12px; font-weight: bold;"
+            # Labels with better font sizes
+            label_style = "color: #cccccc; font-size: 13px; font-weight: normal; padding: 5px;"
+            value_style = "color: #ffffff; font-size: 13px; font-weight: bold; padding: 5px;"
             
             total_points_label = QLabel("Total Points:")
             total_points_label.setStyleSheet(label_style)
@@ -345,7 +359,7 @@ class DeliveryInfoWidget(QWidget):
             self._safe_set_text(self.total_distance, f"{total_distance:.2f} km")
             self._safe_set_text(self.total_cost, f"${total_cost:.2f}")
             
-            print(f"[DeliveryInfoWidget] ✅ Display complete! Total: {total_delivery_points} points, {total_weight:.2f}kg, {total_distance:.2f}km, ${total_cost:.2f}")
+            print(f"[DeliveryInfoWidget]  Display complete! Total: {total_delivery_points} points, {total_weight:.2f}kg, {total_distance:.2f}km, ${total_cost:.2f}")
             
         except Exception as e:
             print(f"[DeliveryInfoWidget] Error displaying data: {e}")

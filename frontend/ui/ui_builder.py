@@ -171,21 +171,21 @@ class UIBuilder:
         """)
         
         # Change depot action
-        change_depot_action = QAction("🚩 Change Depot & Fleet", parent)
+        change_depot_action = QAction("Change Depot & Fleet", parent)
         change_depot_action.triggered.connect(parent.change_depot_location)
         toolbar.addAction(change_depot_action)
         
         toolbar.addSeparator()
         
         # Toggle NFZ
-        toggle_nfz_action = QAction("🚫 Toggle No-Fly Zones", parent)
+        toggle_nfz_action = QAction("Toggle No-Fly Zones", parent)
         toggle_nfz_action.setCheckable(True)
         toggle_nfz_action.setChecked(True)
         toggle_nfz_action.triggered.connect(parent.toggle_no_fly_zones)
         toolbar.addAction(toggle_nfz_action)
         
         # Toggle vehicles
-        toggle_vehicles_action = QAction("👁 Toggle Vehicles", parent)
+        toggle_vehicles_action = QAction("Toggle Vehicles", parent)
         toggle_vehicles_action.setCheckable(True)
         toggle_vehicles_action.setChecked(True)
         toggle_vehicles_action.triggered.connect(parent.toggle_vehicles)
