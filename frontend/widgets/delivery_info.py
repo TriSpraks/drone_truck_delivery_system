@@ -6,7 +6,6 @@ FILE LOCATION: frontend/widgets/delivery_info.py
 """
 import os
 import json
-import time
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QLabel, 
                            QListWidget, QGridLayout)
 from PyQt5.QtCore import Qt, QTimer
@@ -24,10 +23,13 @@ class DeliveryInfoWidget(QWidget):
         self.last_solution_hash = None
         self.init_ui()
         
-        self.backend_complete = False  # Flag to track if backend processing is done
-        self.solution_fetched = False  # Track if we've already fetched solution
-
-        # No initial load - wait for main window to trigger loading after backend completion
+        # Setup continuous polling
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.periodic_load_solution)
+        self.refresh_timer.start(2000)  # Check every 2 seconds
+        
+        # Initial load
+        QTimer.singleShot(500, self.load_backend_solution)
         
     def init_ui(self):
         """Initialize UI matching original design"""
@@ -188,142 +190,107 @@ class DeliveryInfoWidget(QWidget):
             return False
     
     def periodic_load_solution(self):
-        """Adaptive polling for solution updates from API"""
+        """Fetch solution once after backend completion, no polling during processing"""
         if self._widget_destroyed:
             return
 
         try:
-            solution = self._get_solution()
-            if solution:
-                solution_str = json.dumps(solution, sort_keys=True)
-                solution_hash = hash(solution_str)
+            # Only fetch when backend is complete
+            if hasattr(self.parent_window, '_backend_ready') and self.parent_window._backend_ready:
+                # If we already have solution data, stop polling
+                if self.current_solution and self.refresh_timer.isActive():
+                    self.refresh_timer.stop()
+                    return
 
-                if solution_hash != self.last_solution_hash:
-                    # Solution changed - reset polling to faster interval
-                    self.last_solution_hash = solution_hash
-                    self.current_solution = solution
-                    self.display_solution_data(solution)
-                    self.consecutive_unchanged = 0
-                    self._adjust_poll_interval(faster=True)
-                    print(f"[DeliveryInfoWidget] Solution updated - hash: {solution_hash}, polling every {self.poll_interval//1000}s")
+                # Fetch solution data once
+                solution = None
+
+                # First priority: shared solution data from main window
+                if hasattr(self.parent_window, 'shared_solution_data') and self.parent_window.shared_solution_data:
+                    solution = self.parent_window.shared_solution_data
+                # Second priority: API fetch
                 else:
-                    # Solution unchanged - gradually slow down polling
-                    self.consecutive_unchanged += 1
-                    self._adjust_poll_interval(faster=False)
-            else:
-                # No solution available - keep current polling
-                pass
+                    solution = self._get_solution()
+
+                if solution:
+                    solution_str = json.dumps(solution, sort_keys=True)
+                    solution_hash = hash(solution_str)
+
+                    if solution_hash != self.last_solution_hash:
+                        self.last_solution_hash = solution_hash
+                        self.current_solution = solution
+                        self.display_solution_data(solution)
+
+                    # Stop polling after fetching
+                    if self.refresh_timer.isActive():
+                        self.refresh_timer.stop()
         except Exception as e:
-            # On error, don't change polling interval
-            pass
-
-    def _adjust_poll_interval(self, faster=False):
-        """Adjust polling interval based on solution change frequency"""
-        if faster:
-            # Speed up when solution changes
-            self.poll_interval = max(2000, self.poll_interval // 2)  # Minimum 2 seconds
-        else:
-            # Slow down when solution unchanged
-            if self.consecutive_unchanged > 5:
-                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 1.5)
-            elif self.consecutive_unchanged > 10:
-                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 2)
-
-        # Apply new interval
-        if self.poll_interval != self.refresh_timer.interval():
-            self.refresh_timer.setInterval(int(self.poll_interval))
+            pass  # Silent fail for polling
     
     def load_backend_solution(self):
         """Load and display actual backend solution data"""
         try:
             if self._widget_destroyed:
                 return
-            
-            solution = self._get_solution()
-            
+
+            # First try to get shared solution data from main window
+            if hasattr(self.parent_window, 'shared_solution_data') and self.parent_window.shared_solution_data:
+                solution = self.parent_window.shared_solution_data
+            else:
+                # Fallback to API fetch if shared data not available
+                solution = self._get_solution()
+
             if solution:
                 self.current_solution = solution
                 self.display_solution_data(solution)
             else:
                 self.show_waiting_message()
-            
+
         except Exception as e:
             print(f"[DeliveryInfoWidget] Error: {e}")
             self.show_waiting_message()
     
     def _get_solution(self):
-        """Get solution from parent or API - only after backend completion"""
+        """Get solution from parent or API after backend processing completes"""
         # Try parent first
         if self.parent_window and hasattr(self.parent_window, 'solution'):
             if self.parent_window.solution:
                 return self.parent_window.solution
 
+        # Check if backend processing is still in progress
+        if hasattr(self.parent_window, '_backend_processing') and self.parent_window._backend_processing:
+            print("[DeliveryInfoWidget] Backend still processing, skipping solution fetch")
+            return None
+
         # Try API
         try:
-            import requests
+            import aiohttp
+            import asyncio
 
-            # Don't poll if backend processing not complete
-            if not self.backend_complete:
-                # Check if backend has completed by looking for solution
-                response = requests.get(
-                    "https://trispark.onrender.com/api/solution",
-                    timeout=15
-                )
+            async def fetch_solution():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        "https://trispark.onrender.com/api/solution",
+                        timeout=aiohttp.ClientTimeout(total=30)
+                    ) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        else:
+                            print(f"[DeliveryInfoWidget] API error: {response.status}")
+                            return None
 
-                if response.status_code == 200:
-                    solution = response.json()
-                    if solution:
-                        print("[DeliveryInfoWidget] Backend processing complete - fetching solution once")
-                        self.backend_complete = True
-                        return solution
-                # Backend not ready yet
-                return None
+            # Run async function in sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(fetch_solution())
+            finally:
+                loop.close()
 
-            # Backend complete - use cached solution if already fetched
-            if self.solution_fetched and self.current_solution:
-                return self.current_solution
-
-            # First time fetching after backend completion
-            response = requests.get(
-                "https://trispark.onrender.com/api/solution",
-                timeout=15
-            )
-
-            if response.status_code == 200:
-                solution = response.json()
-                if solution:
-                    self.solution_fetched = True
-                    return solution
-            elif response.status_code == 404:
-                # Solution disappeared - reset backend complete flag
-                self.backend_complete = False
-                self.solution_fetched = False
-                if self.refresh_timer:
-                    self.refresh_timer.stop()
-                    self.refresh_timer = None
-                return None
-            else:
-                print(f"[DeliveryInfoWidget] Failed to fetch solution: HTTP {response.status_code}")
-                return None
-
-        except requests.exceptions.Timeout:
-            print("[DeliveryInfoWidget] Timeout fetching solution from API")
-            return None
-        except requests.exceptions.ConnectionError:
-            print("[DeliveryInfoWidget] Connection error - cannot reach backend API")
-            return None
         except Exception as e:
-            print(f"[DeliveryInfoWidget] Error fetching solution: {e}")
+            print(f"[DeliveryInfoWidget] Error fetching solution from API: {e}")
 
         return None
-
-    def _start_adaptive_polling(self):
-        """Start adaptive polling once backend processing is complete"""
-        if self.refresh_timer is None:
-            self.refresh_timer = QTimer()
-            self.refresh_timer.timeout.connect(self.periodic_load_solution)
-            self.refresh_timer.start(self.poll_interval)
-            print(f"[DeliveryInfoWidget] Started adaptive polling every {self.poll_interval//1000}s")
     
     def display_solution_data(self, solution):
         """Display backend solution data - WORKS WITH ACTUAL STRUCTURE"""

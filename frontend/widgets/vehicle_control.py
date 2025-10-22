@@ -6,7 +6,6 @@ FILE LOCATION: frontend/widgets/vehicle_control.py
 """
 import os
 import json
-import time
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, 
                            QListWidget, QListWidgetItem)
 from PyQt5.QtCore import Qt, QTimer
@@ -18,12 +17,15 @@ class VehicleControlPanel(QWidget):
         super().__init__()
         self.parent_window = parent
         self.current_solution = None
+        self.last_solution_hash = None
         self.vehicle_data_cache = {}
         self.init_ui()
         
-        self.backend_complete = False  # Flag to track if backend processing is done
-        self.solution_fetched = False  # Track if we've already fetched solution
-
+        # Auto-refresh timer
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.refresh_vehicle_data)
+        self.refresh_timer.start(1000)  # Refresh every 1 second for live updates
+        
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
@@ -95,90 +97,45 @@ class VehicleControlPanel(QWidget):
         status_layout.addWidget(self.status_list, 1)
         layout.addWidget(status_group, 1)
         
-        # No initial load - wait for main window to trigger loading after backend completion
-    
-    def toggle_auto_refresh(self):
-        """Toggle auto-refresh timer - only works after backend completion"""
-        if not self.backend_complete:
-            print("[VehicleControlPanel] Cannot toggle auto-refresh - backend processing not complete")
-            return
-
-        if self.auto_refresh_btn.isChecked():
-            if self.refresh_timer:
-                self.refresh_timer.start(self.poll_interval)
-            self.auto_refresh_btn.setText("⏸ Auto-Refresh")
-        else:
-            if self.refresh_timer:
-                self.refresh_timer.stop()
-            self.auto_refresh_btn.setText("▶ Auto-Refresh")
-
-    def _start_adaptive_polling(self):
-        """Start adaptive polling once backend processing is complete"""
-        if self.refresh_timer is None:
-            self.refresh_timer = QTimer()
-            self.refresh_timer.timeout.connect(self.refresh_vehicle_data)
-            self.refresh_timer.start(self.poll_interval)
-            print(f"[VehicleControlPanel] Started adaptive polling every {self.poll_interval//1000}s")
+        # Load initial data
+        self.load_backend_solution()
     
     def load_backend_solution(self):
-        """Load backend solution data"""
+        """Load backend solution data after backend processing completes"""
         try:
-            # Try parent first
-            solution = None
-            if self.parent_window and hasattr(self.parent_window, 'solution'):
-                solution = self.parent_window.solution
+            # First try to get shared solution data from main window
+            if hasattr(self.parent_window, 'shared_solution_data') and self.parent_window.shared_solution_data:
+                solution = self.parent_window.shared_solution_data
+            else:
+                # Fallback to API fetch if shared data not available
+                # Check if backend processing is still in progress
+                if hasattr(self.parent_window, '_backend_processing') and self.parent_window._backend_processing:
+                    print("[VehicleControl] Backend still processing, skipping solution fetch")
+                    self.show_no_solution_message()
+                    return
 
-            # If no solution in parent, try API - only after backend completion
-            if not solution:
+                import aiohttp
+                import asyncio
+
+                async def fetch_solution():
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            "https://trispark.onrender.com/api/solution",
+                            timeout=aiohttp.ClientTimeout(total=30)
+                        ) as response:
+                            if response.status == 200:
+                                return await response.json()
+                            else:
+                                print(f"[VehicleControl] API error: {response.status}")
+                                return None
+
+                # Run async function in sync context
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 try:
-                    import requests
-
-                    # Don't poll if backend processing not complete
-                    if not self.backend_complete:
-                        # Check if backend has completed by looking for solution
-                        response = requests.get(
-                            "https://trispark.onrender.com/api/solution",
-                            timeout=15
-                        )
-
-                        if response.status_code == 200:
-                            solution = response.json()
-                            if solution:
-                                print("[VehicleControlPanel] Backend processing complete - fetching solution once")
-                                self.backend_complete = True
-                        # Backend not ready yet
-                        return
-
-                    # Backend complete - use cached solution if already fetched
-                    if self.solution_fetched and self.current_solution:
-                        solution = self.current_solution
-                    else:
-                        # First time fetching after backend completion
-                        response = requests.get(
-                            "https://trispark.onrender.com/api/solution",
-                            timeout=15
-                        )
-
-                        if response.status_code == 200:
-                            solution = response.json()
-                            if solution:
-                                self.solution_fetched = True
-                        elif response.status_code == 404:
-                            # Solution disappeared - reset backend complete flag
-                            self.backend_complete = False
-                            self.solution_fetched = False
-                            if self.refresh_timer:
-                                self.refresh_timer.stop()
-                                self.refresh_timer = None
-                        else:
-                            print(f"Failed to fetch solution: HTTP {response.status_code}")
-
-                except requests.exceptions.Timeout:
-                    print("Timeout fetching solution from API")
-                except requests.exceptions.ConnectionError:
-                    print("Connection error - cannot reach backend API")
-                except Exception as e:
-                    print(f"Error fetching solution: {e}")
+                    solution = loop.run_until_complete(fetch_solution())
+                finally:
+                    loop.close()
 
             if solution:
                 self.current_solution = solution
@@ -191,86 +148,125 @@ class VehicleControlPanel(QWidget):
             self.show_error_message(str(e))
     
     def refresh_vehicle_data(self):
-        """Adaptive refresh of vehicle data based on current state"""
-        try:
-            changed = False
+        """Refresh vehicle data - fetch once after backend completion, no polling during processing"""
+        if self.parent_window and hasattr(self.parent_window, 'vehicle_manager'):
+            vm = self.parent_window.vehicle_manager
+            if vm.vehicles_started and vm.vehicles:
+                # Update with live data when vehicles are running
+                self.update_live_vehicle_status(vm.vehicles)
+                return  # Continue polling for live updates
 
-            if self.parent_window and hasattr(self.parent_window, 'vehicle_manager'):
-                vm = self.parent_window.vehicle_manager
-                if vm.vehicles_started and vm.vehicles:
-                    # Update with live data - always refresh when vehicles are active
-                    self.update_live_vehicle_status(vm.vehicles)
-                    changed = True
-                elif self.current_solution:
-                    # Show backend assignments - check if solution changed
-                    solution_str = json.dumps(self.current_solution, sort_keys=True)
-                    solution_hash = hash(solution_str)
+        # Only fetch when backend is complete
+        if hasattr(self.parent_window, '_backend_ready') and self.parent_window._backend_ready:
+            # If we already have solution data, stop polling
+            if self.current_solution and self.refresh_timer.isActive():
+                self.refresh_timer.stop()
+                return
 
-                    if solution_hash != getattr(self, 'last_solution_hash', None):
-                        self.last_solution_hash = solution_hash
-                        self.display_backend_vehicles(self.current_solution)
-                        changed = True
+            # Fetch solution data once
+            solution = None
 
-            # Adjust polling based on whether data changed
-            if changed:
-                self.consecutive_unchanged = 0
-                self._adjust_poll_interval(faster=True)
+            # First priority: shared solution data from main window
+            if hasattr(self.parent_window, 'shared_solution_data') and self.parent_window.shared_solution_data:
+                solution = self.parent_window.shared_solution_data
+            # Second priority: API fetch
             else:
-                self.consecutive_unchanged += 1
-                self._adjust_poll_interval(faster=False)
+                try:
+                    import aiohttp
+                    import asyncio
 
-        except Exception as e:
-            print(f"[VehicleControlPanel] Error refreshing vehicle data: {e}")
+                    async def fetch_solution():
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(
+                                "https://trispark.onrender.com/api/solution",
+                                timeout=aiohttp.ClientTimeout(total=10)
+                            ) as response:
+                                if response.status == 200:
+                                    return await response.json()
+                                else:
+                                    return None
 
-    def _adjust_poll_interval(self, faster=False):
-        """Adjust polling interval based on data change frequency"""
-        if faster:
-            # Speed up when data changes
-            self.poll_interval = max(3000, self.poll_interval // 2)  # Minimum 3 seconds for vehicle control
-        else:
-            # Slow down when data unchanged
-            if self.consecutive_unchanged > 3:
-                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 1.5)
-            elif self.consecutive_unchanged > 8:
-                self.poll_interval = min(self.max_poll_interval, self.poll_interval * 2)
+                    # Run async function in sync context
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        solution = loop.run_until_complete(fetch_solution())
+                    finally:
+                        loop.close()
+                except Exception as e:
+                    print(f"[VehicleControl] Error fetching solution: {e}")
+                    solution = None
 
-        # Apply new interval
-        if self.poll_interval != self.refresh_timer.interval():
-            self.refresh_timer.setInterval(int(self.poll_interval))
-            print(f"[VehicleControlPanel] Adjusted polling to {self.poll_interval//1000}s")
+            if solution:
+                solution_str = json.dumps(solution, sort_keys=True)
+                solution_hash = hash(solution_str)
+
+                if solution_hash != self.last_solution_hash:
+                    self.last_solution_hash = solution_hash
+                    self.current_solution = solution
+                    self.display_backend_vehicles(solution)
+
+                # Stop polling after fetching
+                if self.refresh_timer.isActive():
+                    self.refresh_timer.stop()
+        elif not self.current_solution:
+            # Try to load solution if not available
+            self.load_backend_solution()
     
     def display_backend_vehicles(self, solution):
-        """Display vehicle assignments from backend solution"""
+        """Display vehicle assignments from backend solution - ADAPTIVE PARSING"""
         try:
             self.status_list.clear()
-            
-            waves = solution.get('waves', [])
+
+            print(f"[VehicleControl] Solution keys: {solution.keys()}")
+
+            # ADAPTIVE: Try different ways to get wave data
+            waves = None
+
+            # Try 1: waves array
+            if 'waves' in solution and isinstance(solution['waves'], list):
+                waves = solution['waves']
+                print(f"[VehicleControl] Found waves array with {len(waves)} waves")
+
+            # Try 2: Check if top-level has wave_X keys
+            elif any(key.startswith('wave_') for key in solution.keys()):
+                print(f"[VehicleControl] Found wave_X structure in solution")
+                wave_keys = sorted([k for k in solution.keys() if k.startswith('wave_')])
+                waves = [solution[k] for k in wave_keys]
+                print(f"[VehicleControl] Extracted {len(waves)} waves")
+
             if not waves:
-                self.status_list.addItem("⚠️ No waves in solution")
+                print(f"[VehicleControl] No waves found. Solution structure: {json.dumps(solution, indent=2)[:500]}")
+                self.status_list.addItem("⏳ Waiting for backend solution...")
+                self.status_list.addItem("")
+                self.status_list.addItem("Backend optimization is processing")
                 return
-            
+
             current_wave = waves[0]
             wave_num = current_wave.get('wave_number', 1)
-            
+            print(f"[VehicleControl] Processing first wave. Keys: {current_wave.keys()}")
+
             # Header
             header_item = QListWidgetItem(f"═══ WAVE {wave_num} ASSIGNMENTS ═══")
             header_item.setForeground(Qt.yellow)
             self.status_list.addItem(header_item)
-            
+
             # Display drones
             drones = current_wave.get('drones', [])
+            print(f"[VehicleControl] Found {len(drones)} drones")
             for i, drone in enumerate(drones, 1):
                 self.add_vehicle_item(drone, "Drone", "🚁")
-            
+
             # Display trucks
             trucks = current_wave.get('trucks', [])
+            print(f"[VehicleControl] Found {len(trucks)} trucks")
             for truck in trucks:
                 vehicle_id = truck.get('vehicle_id', '')
                 if "E_Truck" in vehicle_id:
                     self.add_vehicle_item(truck, "E-Truck", "🔋")
                 else:
                     self.add_vehicle_item(truck, "F-Truck", "⛽")
-            
+
         except Exception as e:
             print(f"Error displaying vehicles: {e}")
             self.status_list.addItem(f"❌ Error: {str(e)}")
