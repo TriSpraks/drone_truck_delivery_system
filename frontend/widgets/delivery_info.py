@@ -190,21 +190,40 @@ class DeliveryInfoWidget(QWidget):
             return False
     
     def periodic_load_solution(self):
-        """Continuously check for updated solution"""
+        """Fetch solution once after backend completion, no polling during processing"""
         if self._widget_destroyed:
             return
-        
+
         try:
-            solution = self._get_solution()
-            if solution:
-                # Check if solution changed
-                solution_str = json.dumps(solution, sort_keys=True)
-                solution_hash = hash(solution_str)
-                
-                if solution_hash != self.last_solution_hash:
-                    self.last_solution_hash = solution_hash
-                    self.current_solution = solution
-                    self.display_solution_data(solution)
+            # Only fetch when backend is complete
+            if hasattr(self.parent_window, '_backend_ready') and self.parent_window._backend_ready:
+                # If we already have solution data, stop polling
+                if self.current_solution and self.refresh_timer.isActive():
+                    self.refresh_timer.stop()
+                    return
+
+                # Fetch solution data once
+                solution = None
+
+                # First priority: shared solution data from main window
+                if hasattr(self.parent_window, 'shared_solution_data') and self.parent_window.shared_solution_data:
+                    solution = self.parent_window.shared_solution_data
+                # Second priority: API fetch
+                else:
+                    solution = self._get_solution()
+
+                if solution:
+                    solution_str = json.dumps(solution, sort_keys=True)
+                    solution_hash = hash(solution_str)
+
+                    if solution_hash != self.last_solution_hash:
+                        self.last_solution_hash = solution_hash
+                        self.current_solution = solution
+                        self.display_solution_data(solution)
+
+                    # Stop polling after fetching
+                    if self.refresh_timer.isActive():
+                        self.refresh_timer.stop()
         except Exception as e:
             pass  # Silent fail for polling
     
@@ -213,37 +232,64 @@ class DeliveryInfoWidget(QWidget):
         try:
             if self._widget_destroyed:
                 return
-            
-            solution = self._get_solution()
-            
+
+            # First try to get shared solution data from main window
+            if hasattr(self.parent_window, 'shared_solution_data') and self.parent_window.shared_solution_data:
+                solution = self.parent_window.shared_solution_data
+            else:
+                # Fallback to API fetch if shared data not available
+                solution = self._get_solution()
+
             if solution:
                 self.current_solution = solution
                 self.display_solution_data(solution)
             else:
                 self.show_waiting_message()
-            
+
         except Exception as e:
             print(f"[DeliveryInfoWidget] Error: {e}")
             self.show_waiting_message()
     
     def _get_solution(self):
-        """Get solution from parent or file"""
+        """Get solution from parent or API after backend processing completes"""
         # Try parent first
         if self.parent_window and hasattr(self.parent_window, 'solution'):
             if self.parent_window.solution:
                 return self.parent_window.solution
-        
-        # Try file
-        backend_folder = self.get_backend_folder_path()
-        if backend_folder:
-            solution_file = os.path.join(backend_folder, 'solution.json')
-            if os.path.exists(solution_file):
-                try:
-                    with open(solution_file, 'r') as f:
-                        return json.load(f)
-                except Exception as e:
-                    print(f"[DeliveryInfoWidget] Error reading solution file: {e}")
-        
+
+        # Check if backend processing is still in progress
+        if hasattr(self.parent_window, '_backend_processing') and self.parent_window._backend_processing:
+            print("[DeliveryInfoWidget] Backend still processing, skipping solution fetch")
+            return None
+
+        # Try API
+        try:
+            import aiohttp
+            import asyncio
+
+            async def fetch_solution():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        "https://trispark.onrender.com/api/solution",
+                        timeout=aiohttp.ClientTimeout(total=30)
+                    ) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        else:
+                            print(f"[DeliveryInfoWidget] API error: {response.status}")
+                            return None
+
+            # Run async function in sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(fetch_solution())
+            finally:
+                loop.close()
+
+        except Exception as e:
+            print(f"[DeliveryInfoWidget] Error fetching solution from API: {e}")
+
         return None
     
     def display_solution_data(self, solution):

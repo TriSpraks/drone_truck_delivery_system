@@ -13,7 +13,7 @@ from typing import List, Dict, Optional
 class BackendHandler:
     """Handles all backend API communication"""
     
-    BASE_URL = "http://127.0.0.1:8000"
+    BASE_URL = "https://trispark.onrender.com"
     
     @staticmethod
     def calculate_timeout(num_nodes: int) -> int:

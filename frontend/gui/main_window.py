@@ -62,20 +62,22 @@ class BackendProcessorThread(QThread):
             
             if success:
                 self.progress_update.emit("Loading optimized solution...")
-                
+
                 # Wait for file to be written
                 time.sleep(5)
-                
-                # Load solution
-                backend_folder = self.parent.get_backend_folder_path()
-                solution = BackendHandler.load_solution(backend_folder)
-                
+
+                # Load solution from API instead of local file
+                solution = loop.run_until_complete(self.fetch_solution_from_api())
+
                 if solution:
+                    # Store solution data for sharing with widgets
+                    self.shared_solution_data = solution
+
                     elapsed = int(time.time() - self.start_time)
                     self.progress_update.emit(f"Backend optimization complete! (took {elapsed}s)")
                     self.finished.emit(True, solution)
                 else:
-                    self.progress_update.emit("Warning: Solution file not found")
+                    self.progress_update.emit("Warning: Solution not available from API")
                     self.finished.emit(False, None)
             else:
                 self.error.emit("Backend processing failed")
@@ -102,13 +104,13 @@ class BackendProcessorThread(QThread):
         try:
             num_nodes = len(self.parent.customer_nodes)
             self.progress_update.emit(f"Sending {num_nodes} delivery nodes to backend...")
-            
+
             vehicle_config = {
                 "electric_trucks": self.parent.electric_trucks,
                 "fuel_trucks": self.parent.fuel_trucks,
                 "drones": self.parent.drones
             }
-            
+
             # Send nodes to backend
             self.progress_update.emit(f"Computing distance matrix ({num_nodes}x{num_nodes} = {num_nodes*num_nodes} calculations)...")
             success = await BackendHandler.process_all_computations(
@@ -116,17 +118,38 @@ class BackendProcessorThread(QThread):
                 self.parent.depot_node,
                 vehicle_config
             )
-            
+
             if success:
                 self.progress_update.emit("Running optimization algorithm...")
                 await asyncio.sleep(2)  # Give backend time to complete
                 return True
             else:
                 return False
-                
+
         except Exception as e:
             print(f"❌ Error in backend processing: {e}")
             return False
+
+    async def fetch_solution_from_api(self):
+        """Fetch solution from production API"""
+        try:
+            import aiohttp
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    "https://trispark.onrender.com/api/solution",
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        solution = await response.json()
+                        print("✅ Successfully fetched solution from API")
+                        return solution
+                    else:
+                        print(f"❌ API error: {response.status}")
+                        return None
+        except Exception as e:
+            print(f"❌ Error fetching solution from API: {e}")
+            return None
 
 
 class IndiaAirspaceMap(QMainWindow):
@@ -144,6 +167,10 @@ class IndiaAirspaceMap(QMainWindow):
         self._shutdown_in_progress = False
         self._progress_mutex = QMutex()
         self._backend_ready = False
+        self._backend_processing = False
+
+        # Shared solution data to avoid multiple API calls
+        self.shared_solution_data = None
         
         # Apply theme
         self.setStyleSheet(DARK_STYLE)
@@ -240,6 +267,9 @@ class IndiaAirspaceMap(QMainWindow):
         print(f"Expected duration: {expected_minutes:.1f} minutes")
         print("="*70)
         
+        # Set processing flag
+        self._backend_processing = True
+
         # Start backend thread
         self.backend_thread = BackendProcessorThread(self)
         self.backend_thread.progress_update.connect(self.on_backend_progress)
@@ -283,6 +313,7 @@ class IndiaAirspaceMap(QMainWindow):
             self.solution = solution_data
             self.waves_data = BackendHandler.parse_wave_information(solution_data)
             self._backend_ready = True
+            self._backend_processing = False
             
             print(f"   Loaded {len(self.waves_data)} waves")
             for i, wave in enumerate(self.waves_data, 1):
@@ -307,6 +338,7 @@ class IndiaAirspaceMap(QMainWindow):
             print("⚠️  BACKEND OPTIMIZATION FAILED OR INCOMPLETE")
             print("   Will use frontend optimization as fallback")
             self._backend_ready = False
+            self._backend_processing = False
             
             # Close progress dialog
             if hasattr(self, 'backend_progress'):
@@ -342,8 +374,9 @@ class IndiaAirspaceMap(QMainWindow):
             f"Backend processing failed:\n\n{error_message}\n\n"
             f"The system will use frontend optimization instead."
         )
-        
+
         self._backend_ready = False
+        self._backend_processing = False
     
     def get_backend_folder_path(self):
         """Get path to backend folder"""
@@ -528,7 +561,8 @@ class IndiaAirspaceMap(QMainWindow):
         self.solution = None
         self.waves_data = []
         self._backend_ready = False
-        
+        self._backend_processing = False
+
         # Restart backend processing
         self.start_backend_processing_with_dialog()
     

@@ -30,14 +30,14 @@ class AnalyticsDashboard(QWidget):
         self.current_solution = None
         self.last_solution_hash = None
         self._widget_destroyed = False
-        
+
         self.init_ui()
-        
+
         # Setup continuous polling for solution.json updates
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.periodic_check_solution)
         self.refresh_timer.start(2000)  # Check every 2 seconds
-        
+
         # Initial load
         QTimer.singleShot(1000, self.load_solution_data)
     
@@ -105,20 +105,40 @@ class AnalyticsDashboard(QWidget):
             return None
     
     def periodic_check_solution(self):
-        """Continuously check for updated solution.json"""
+        """Fetch solution once after backend completion, no polling during processing"""
         if self._widget_destroyed:
             return
-        
+
         try:
-            solution = self._load_solution_file()
-            if solution:
-                solution_str = json.dumps(solution, sort_keys=True)
-                solution_hash = hash(solution_str)
-                
-                if solution_hash != self.last_solution_hash:
-                    self.last_solution_hash = solution_hash
-                    self.current_solution = solution
-                    self.refresh_all_graphs()
+            # Only fetch when backend is complete
+            if hasattr(self.parent_window, '_backend_ready') and self.parent_window._backend_ready:
+                # If we already have solution data, stop polling
+                if self.current_solution and self.refresh_timer.isActive():
+                    self.refresh_timer.stop()
+                    return
+
+                # Fetch solution data once
+                solution = None
+
+                # First priority: shared solution data from main window
+                if hasattr(self.parent_window, 'shared_solution_data') and self.parent_window.shared_solution_data:
+                    solution = self.parent_window.shared_solution_data
+                # Second priority: API fetch
+                else:
+                    solution = self._load_solution_file()
+
+                if solution:
+                    solution_str = json.dumps(solution, sort_keys=True)
+                    solution_hash = hash(solution_str)
+
+                    if solution_hash != self.last_solution_hash:
+                        self.last_solution_hash = solution_hash
+                        self.current_solution = solution
+                        self.refresh_all_graphs()
+
+                    # Stop polling after fetching
+                    if self.refresh_timer.isActive():
+                        self.refresh_timer.stop()
         except Exception as e:
             pass  # Silent fail for polling
     
@@ -127,9 +147,14 @@ class AnalyticsDashboard(QWidget):
         try:
             if self._widget_destroyed:
                 return
-            
-            solution = self._load_solution_file()
-            
+
+            # First try to get shared solution data from main window
+            if hasattr(self.parent_window, 'shared_solution_data') and self.parent_window.shared_solution_data:
+                solution = self.parent_window.shared_solution_data
+            else:
+                # Fallback to API fetch if shared data not available
+                solution = self._load_solution_file()
+
             if solution:
                 self.current_solution = solution
                 self.last_solution_hash = hash(json.dumps(solution, sort_keys=True))
@@ -141,19 +166,39 @@ class AnalyticsDashboard(QWidget):
             self.show_waiting_message()
     
     def _load_solution_file(self):
-        """Load solution.json from backend folder"""
+        """Load solution.json from backend API after backend processing completes"""
         try:
-            backend_folder = self.get_backend_folder_path()
-            if not backend_folder:
+            # Check if backend processing is still in progress
+            if hasattr(self.parent_window, '_backend_processing') and self.parent_window._backend_processing:
+                print("[AnalyticsDashboard] Backend still processing, skipping solution fetch")
                 return None
-            
-            solution_file = os.path.join(backend_folder, 'solution.json')
-            if os.path.exists(solution_file):
-                with open(solution_file, 'r') as f:
-                    return json.load(f)
+
+            import aiohttp
+            import asyncio
+
+            async def fetch_solution():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        "https://trispark.onrender.com/api/solution",
+                        timeout=aiohttp.ClientTimeout(total=30)
+                    ) as response:
+                        if response.status == 200:
+                            return await response.json()
+                        else:
+                            print(f"[AnalyticsDashboard] API error: {response.status}")
+                            return None
+
+            # Run async function in sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(fetch_solution())
+            finally:
+                loop.close()
+
         except Exception as e:
-            print(f"[AnalyticsDashboard] Error reading solution file: {e}")
-        
+            print(f"[AnalyticsDashboard] Error fetching solution from API: {e}")
+
         return None
     
     def refresh_all_graphs(self):
