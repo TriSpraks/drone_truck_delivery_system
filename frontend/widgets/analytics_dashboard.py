@@ -808,7 +808,7 @@ class AnalyticsDashboard(QWidget):
                     <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
                         <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px; 
                                    border-left: 4px solid #3b82f6;'>
-                            📏 Total Distance
+                            Total Distance
                         </td>
                         <td style='padding: 15px 20px; color:#3b82f6; text-align: right; 
                                    font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
@@ -818,7 +818,7 @@ class AnalyticsDashboard(QWidget):
                     <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
                         <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px;
                                    border-left: 4px solid #10b981;'>
-                            💰 Total Cost
+                            Total Cost
                         </td>
                         <td style='padding: 15px 20px; color:#10b981; text-align: right; 
                                    font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
@@ -828,7 +828,7 @@ class AnalyticsDashboard(QWidget):
                     <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
                         <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px;
                                    border-left: 4px solid #8b5cf6;'>
-                            📍 Total Nodes
+                            Total Nodes
                         </td>
                         <td style='padding: 15px 20px; color:#8b5cf6; text-align: right; 
                                    font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
@@ -838,7 +838,7 @@ class AnalyticsDashboard(QWidget):
                     <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
                         <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px;
                                    border-left: 4px solid #f97316;'>
-                            📊 Avg Cost per Node
+                            Avg Cost per Node
                         </td>
                         <td style='padding: 15px 20px; color:#f97316; text-align: right; 
                                    font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
@@ -848,7 +848,7 @@ class AnalyticsDashboard(QWidget):
                     <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
                         <td style='padding: 15px 20px; font-weight: bold; border-radius: 8px 0 0 8px;
                                    border-left: 4px solid #10b981;'>
-                            ✅ Success Rate
+                            Success Rate
                         </td>
                         <td style='padding: 15px 20px; color:#10b981; text-align: right; 
                                    font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>

@@ -309,7 +309,7 @@ class IndiaAirspaceMap(QMainWindow):
         print("="*70)
         
         if success and solution_data:
-            print("✅ BACKEND OPTIMIZATION COMPLETE")
+            print("BACKEND OPTIMIZATION COMPLETE")
             self.solution = solution_data
             self.waves_data = BackendHandler.parse_wave_information(solution_data)
             self._backend_ready = True
@@ -335,7 +335,7 @@ class IndiaAirspaceMap(QMainWindow):
             )
             
         else:
-            print("⚠️  BACKEND OPTIMIZATION FAILED OR INCOMPLETE")
+            print("BACKEND OPTIMIZATION FAILED OR INCOMPLETE")
             print("   Will use frontend optimization as fallback")
             self._backend_ready = False
             self._backend_processing = False
