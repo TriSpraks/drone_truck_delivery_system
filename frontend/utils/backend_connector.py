@@ -7,7 +7,7 @@ from typing import Dict, Any, Tuple, List
 class BackendConnector:
     """Connector to communicate with backend and access backend configuration"""
     
-    def __init__(self, backend_url: str = "http://localhost:8000"):  # CHANGED: 8001 -> 8000
+    def __init__(self, backend_url: str = "https://trispark.onrender.com"):  # CHANGED: 8001 -> 8000
         self.backend_url = backend_url.rstrip('/')
     
     def get_backend_config(self) -> Dict[str, Any]:
