@@ -221,6 +221,7 @@ class AnalyticsDashboard(QWidget):
             self._create_efficiency_comparison_bar(analytics)
             self._create_distance_histogram(analytics)
             self._create_wave_metrics_line(analytics)
+            self._create_noise_analysis_bar(analytics)  # ← ADD THIS LINE
             self._create_cost_analysis_box(analytics)
             self._create_capacity_utilization_heatmap(analytics)
             self._create_summary_section(analytics)
@@ -358,7 +359,7 @@ class AnalyticsDashboard(QWidget):
             ax = fig.add_subplot(111)
             
             colors = ['#3b82f6', '#10b981', '#f97316']
-            explode = [0.05] * len(type_counts)
+            
             
             wedges, texts, autotexts = ax.pie(
                 type_counts.values, 
@@ -366,7 +367,6 @@ class AnalyticsDashboard(QWidget):
                 autopct='%1.1f%%',
                 colors=colors,
                 startangle=90,
-                explode=explode,
                 textprops={'fontsize': 9, 'weight': 'bold'},
                 pctdistance=0.75
             )
@@ -435,7 +435,7 @@ class AnalyticsDashboard(QWidget):
                         ha='center', va='center',
                         color='white', fontsize=8, fontweight='bold')
             
-            ax1.set_xlabel('Cost per Node ($)', 
+            ax1.set_xlabel('Cost per Node ', 
                           color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
             ax1.set_title('Cost Efficiency', 
                          color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
@@ -572,7 +572,7 @@ class AnalyticsDashboard(QWidget):
             ax2 = ax1.twinx()
             line2 = ax2.plot(x_pos, df['Cost'],
                     marker='s', linewidth=2.5, markersize=8,
-                    color='#f97316', label='Cost ($)',
+                    color='#f97316', label='Cost ',
                     markeredgecolor='white', markeredgewidth=1.5)
             
             # Compact labels positioned smartly
@@ -602,7 +602,7 @@ class AnalyticsDashboard(QWidget):
             ax1.set_xticklabels(df['Wave'], fontsize=8)
             ax1.set_xlabel('Wave', color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
             ax1.set_ylabel('Distance (km)', color='#3b82f6', fontsize=9, fontweight='bold', labelpad=5)
-            ax2.set_ylabel('Cost ($)', color='#f97316', fontsize=9, fontweight='bold', labelpad=5)
+            ax2.set_ylabel('Cost ', color='#f97316', fontsize=9, fontweight='bold', labelpad=5)
             
             ax1.set_title('Distance & Cost Trends', 
                          color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
@@ -629,7 +629,7 @@ class AnalyticsDashboard(QWidget):
                       facecolor='#2a2a2a', edgecolor='#555555',
                       framealpha=0.95)
             
-            # FIXED: More space on right for Cost ($) y-axis label
+            # FIXED: More space on right for Cost y-axis label
             fig.subplots_adjust(left=0.15, right=0.85, top=0.90, bottom=0.15)
             
             canvas = FigureCanvas(fig)
@@ -703,7 +703,7 @@ class AnalyticsDashboard(QWidget):
                                edgecolor='white', linewidth=0.8))
             
             ax.set_xlabel('Vehicle Type', color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
-            ax.set_ylabel('Cost per Node ($)', color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax.set_ylabel('Cost per Node ', color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
             ax.set_title('Cost Distribution',
                         color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
             ax.set_facecolor('#1a1a1a')
@@ -792,6 +792,126 @@ class AnalyticsDashboard(QWidget):
             
         except Exception as e:
             print(f"Error creating capacity heatmap: {e}")
+        
+    def _create_noise_analysis_bar(self, analytics):
+        """Create noise analysis bar chart - FIXED LABEL POSITIONING"""
+        try:
+            group = self._create_group_box("Noise Analysis")
+            
+            waves = analytics['waves']
+            if not waves:
+                group.layout().addWidget(QLabel("No wave data available"))
+                self.container_layout.addWidget(group)
+                return
+            
+            # Calculate noise levels for each wave
+            noise_data = []
+            NOISE_CONSTANT = 90  # dB per drone
+            
+            for wave_name, data in sorted(waves.items()):
+                num_drones = data.get('drones', 0)
+                noise_level = num_drones * NOISE_CONSTANT
+                noise_data.append({
+                    'Wave': wave_name.replace('wave_', 'Wave '),
+                    'Drones': num_drones,
+                    'Noise': noise_level
+                })
+            
+            if not noise_data:
+                group.layout().addWidget(QLabel("No noise data available"))
+                self.container_layout.addWidget(group)
+                return
+            
+            df = pd.DataFrame(noise_data)
+            
+            fig = Figure(figsize=(8, 4.5), dpi=100, facecolor='#2a2a2a')
+            ax = fig.add_subplot(111)
+            
+            # Create gradient colors based on noise levels
+            colors = []
+            max_noise = df['Noise'].max() if df['Noise'].max() > 0 else 1
+            for noise in df['Noise']:
+                if noise == 0:
+                    colors.append('#2a2a2a')  # Dark for no noise
+                elif noise < max_noise * 0.33:
+                    colors.append('#10b981')  # Green for low
+                elif noise < max_noise * 0.66:
+                    colors.append('#f59e0b')  # Yellow for medium
+                else:
+                    colors.append('#ef4444')  # Red for high
+            
+            bars = ax.bar(range(len(df)), df['Noise'],
+                        color=colors, edgecolor='white', linewidth=1.5,
+                        width=0.6, alpha=0.9)
+            
+            # FIXED: Better label positioning - above bar with proper offset
+            for i, (bar, row) in enumerate(zip(bars, df.itertuples())):
+                height = bar.get_height()
+                if height > 0:
+                    # Position label above the bar
+                    label_y = height + (max_noise * 0.05)  # 5% offset above bar
+                    
+                    ax.text(bar.get_x() + bar.get_width()/2, label_y,
+                        f'{int(height)} dB',
+                        ha='center', va='bottom',
+                        color='white', fontsize=9, fontweight='bold',
+                        bbox=dict(boxstyle='round,pad=0.3',
+                                facecolor='#1a1a1a', alpha=0.85,
+                                edgecolor='white', linewidth=1))
+                    
+                    # Add drone count inside the bar
+                    if height > 20:  # Only if bar is tall enough
+                        ax.text(bar.get_x() + bar.get_width()/2, height/2,
+                            f'{row.Drones} drone{"s" if row.Drones != 1 else ""}',
+                            ha='center', va='center',
+                            color='white', fontsize=8, fontweight='bold',
+                            bbox=dict(boxstyle='round,pad=0.25',
+                                    facecolor='black', alpha=0.6,
+                                    edgecolor='none'))
+            
+            ax.set_xticks(range(len(df)))
+            ax.set_xticklabels(df['Wave'], fontsize=9, fontweight='bold')
+            ax.set_xlabel('Wave', color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax.set_ylabel('Noise Level (dB)', color='#ffffff', fontsize=9, fontweight='bold', labelpad=5)
+            ax.set_title('Noise Levels by Wave (90 dB per Drone)',
+                        color='#ff6b35', fontsize=11, fontweight='bold', pad=15)
+            ax.set_facecolor('#1a1a1a')
+            ax.tick_params(colors='#ffffff', labelsize=8, pad=2)
+            ax.grid(axis='y', alpha=0.3, color='#555555', linestyle='--')
+            
+            # Add reference lines for noise levels
+            if df['Noise'].max() > 0:
+                max_val = df['Noise'].max()
+                if max_val >= 270:
+                    ax.axhline(y=270, color='#ef4444', linestyle='--', linewidth=1.5, alpha=0.5, label='High Noise (270+ dB)')
+                if max_val >= 180:
+                    ax.axhline(y=180, color='#f59e0b', linestyle='--', linewidth=1.5, alpha=0.5, label='Medium Noise (180+ dB)')
+                
+                # Only show legend if we have reference lines
+                if max_val >= 180:
+                    ax.legend(loc='upper right', fontsize=7, facecolor='#2a2a2a', 
+                            edgecolor='#555555', framealpha=0.9)
+            
+            # FIXED: Set y-limit to accommodate labels above bars (add 15% extra space)
+            ax.set_ylim(0, df['Noise'].max() * 1.25 if df['Noise'].max() > 0 else 100)
+            
+            for spine in ax.spines.values():
+                spine.set_color('#555555')
+            
+            # FIXED: More left margin for y-axis label
+            fig.subplots_adjust(left=0.18, right=0.97, top=0.88, bottom=0.15)
+            
+            canvas = FigureCanvas(fig)
+            canvas.setMinimumHeight(420)
+            canvas.setMaximumHeight(420)
+            group.layout().addWidget(canvas)
+            
+            self.container_layout.addWidget(group)
+            
+        except Exception as e:
+            print(f"Error creating noise analysis bar chart: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _create_summary_section(self, analytics):
         """Create summary metrics section - STYLED BOARD"""
@@ -822,7 +942,7 @@ class AnalyticsDashboard(QWidget):
                         </td>
                         <td style='padding: 15px 20px; color:#10b981; text-align: right; 
                                    font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
-                            ${summary['total_cost']:.2f}
+                            {summary['total_cost']:.2f}
                         </td>
                     </tr>
                     <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>
@@ -842,7 +962,7 @@ class AnalyticsDashboard(QWidget):
                         </td>
                         <td style='padding: 15px 20px; color:#f97316; text-align: right; 
                                    font-weight: bold; font-size: 16px; border-radius: 0 8px 8px 0;'>
-                            ${summary['avg_cost_per_node']:.2f}
+                            {summary['avg_cost_per_node']:.2f}
                         </td>
                     </tr>
                     <tr style='background: linear-gradient(135deg, #2d2d2d 0%, #252525 100%);'>

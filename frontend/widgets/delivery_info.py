@@ -147,7 +147,7 @@ class DeliveryInfoWidget(QWidget):
             
             total_cost_label = QLabel("Total Cost:")
             total_cost_label.setStyleSheet(label_style)
-            self.total_cost = QLabel("$0.00")
+            self.total_cost = QLabel("0.00")
             self.total_cost.setStyleSheet(value_style)
             
             summary_layout.addWidget(total_points_label, 0, 0)
@@ -354,7 +354,7 @@ class DeliveryInfoWidget(QWidget):
                 total_weight += weight
                 total_distance += distance
                 total_cost += cost
-                print(f"[DeliveryInfoWidget] Drone {drone_idx}: {num_nodes} nodes, {distance:.2f}km, {weight:.2f}kg, ${cost:.2f}")
+                print(f"[DeliveryInfoWidget] Drone {drone_idx}: {num_nodes} nodes, {distance:.2f}km, {weight:.2f}kg, {cost:.2f}")
             
             # Process trucks
             trucks = current_wave.get('trucks', [])
@@ -381,7 +381,7 @@ class DeliveryInfoWidget(QWidget):
                 total_weight += weight
                 total_distance += distance
                 total_cost += cost
-                print(f"[DeliveryInfoWidget] {vehicle_id}: {num_nodes} nodes, {distance:.2f}km, {weight:.2f}kg, ${cost:.2f}")
+                print(f"[DeliveryInfoWidget] {vehicle_id}: {num_nodes} nodes, {distance:.2f}km, {weight:.2f}kg, {cost:.2f}")
                 truck_counter += 1
             
             # Display deliveries
@@ -403,9 +403,9 @@ class DeliveryInfoWidget(QWidget):
             self._safe_set_text(self.total_points, str(total_delivery_points))
             self._safe_set_text(self.total_weight, f"{total_weight:.2f} kg")
             self._safe_set_text(self.total_distance, f"{total_distance:.2f} km")
-            self._safe_set_text(self.total_cost, f"${total_cost:.2f}")
+            self._safe_set_text(self.total_cost, f"{total_cost:.2f}")
             
-            print(f"[DeliveryInfoWidget]  Display complete! Total: {total_delivery_points} points, {total_weight:.2f}kg, {total_distance:.2f}km, ${total_cost:.2f}")
+            print(f"[DeliveryInfoWidget]  Display complete! Total: {total_delivery_points} points, {total_weight:.2f}kg, {total_distance:.2f}km, {total_cost:.2f}")
             
         except Exception as e:
             print(f"[DeliveryInfoWidget] Error displaying data: {e}")
@@ -426,7 +426,7 @@ class DeliveryInfoWidget(QWidget):
         self._safe_set_text(self.total_points, "0")
         self._safe_set_text(self.total_weight, "0.0 kg")
         self._safe_set_text(self.total_distance, "0.0 km")
-        self._safe_set_text(self.total_cost, "$0.00")
+        self._safe_set_text(self.total_cost, "0.00")
     
     def update_depot(self, depot_coords, customer_count=None):
         """Update depot coordinates and customer count"""

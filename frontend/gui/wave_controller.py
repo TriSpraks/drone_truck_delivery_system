@@ -27,7 +27,7 @@ class WaveController:
         stats = self.parent.vehicle_manager.get_wave_statistics()
         print(f"Wave {self.current_wave + 1} completed!")
         print(f"  Distance: {stats['distance']:.2f} km")
-        print(f"  Cost: ${stats['cost']:.2f}")
+        print(f"  Cost: {stats['cost']:.2f}")
         print(f"  Weight: {stats['weight']:.2f} kg")
         
         # Check for more waves
@@ -44,7 +44,7 @@ class WaveController:
                 f"Wave {self.current_wave + 1} Completed",
                 f"Deliveries: {stats['deliveries']}\n"
                 f"Distance: {stats['distance']:.2f} km\n"
-                f"Cost: ${stats['cost']:.2f}\n\n"
+                f"Cost: {stats['cost']:.2f}\n\n"
                 f"Next wave starts automatically in 5 minutes."
             )
         else:
@@ -57,7 +57,7 @@ class WaveController:
                 f"Final statistics:\n"
                 f"Deliveries: {stats['deliveries']}\n"
                 f"Distance: {stats['distance']:.2f} km\n"
-                f"Cost: ${stats['cost']:.2f}"
+                f"Cost: {stats['cost']:.2f}"
             )
     
     def start_auto_next_wave_timer(self):

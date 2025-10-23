@@ -110,7 +110,7 @@ class MainContainer(QMainWindow):
         print("• Real-time vehicle trails and status monitoring")
         print("• Each vehicle gets assigned a delivery route")
         print("\n📊 Analytics Dashboard (Right Panel):")
-        print("• Cost Analysis: Compare unit costs ($/delivery)")
+        print("• Cost Analysis: Compare unit costs (per delivery)")
         print("• Distance Analysis: Avg distance per delivery by vehicle")
         print("• Capacity Utilization: Weight & volume % for trucks")
         print("• Summary Statistics: Total metrics and breakdowns")

@@ -285,7 +285,7 @@ class VehicleControlPanel(QWidget):
         status_text += f"Type: {vehicle_type}\n"
         status_text += f"Deliveries: {len(node_ids)} nodes\n"
         status_text += f"Distance: {distance:.2f} km\n"
-        status_text += f"Cost: ${cost:.2f}\n"
+        status_text += f"Cost: {cost:.2f}\n"
         status_text += f"Weight: {weight:.2f} kg"
         
         if capacity:
@@ -353,7 +353,7 @@ class VehicleControlPanel(QWidget):
                 
                 # Backend metrics
                 item_text += f"Distance: {backend_distance:.2f} km\n"
-                item_text += f"Cost: ${backend_cost:.2f}\n"
+                item_text += f"Cost: {backend_cost:.2f}\n"
                 item_text += f"Weight: {backend_weight:.2f} kg\n"
                 item_text += f"Volume: {backend_volume:.0f} cm³\n"
                 

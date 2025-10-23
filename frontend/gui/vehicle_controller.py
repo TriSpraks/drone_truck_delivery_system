@@ -64,7 +64,7 @@ class VehicleController:
                         print(f"      Type: {assignment['type']}")
                         print(f"      Deliveries: {len(assignment['all_deliveries'])}")
                         print(f"      Distance: {assignment.get('distance', 0):.2f} km")
-                        print(f"      Cost: ${assignment.get('cost', 0):.2f}")
+                        print(f"      Cost: {assignment.get('cost', 0):.2f}")
                         print(f"      Weight: {assignment.get('total_weight', 0):.2f} kg")
                         print(f"      Volume: {assignment.get('total_volume', 0):.0f} cm³")
                         if 'route_node_ids' in assignment:
@@ -187,7 +187,7 @@ class VehicleController:
             print(f"   Weight: {vehicle_data.get('backend_weight', vehicle_data.get('weight', 0)):.2f} kg")
             print(f"   Volume: {vehicle_data.get('backend_volume', vehicle_data.get('volume', 0)):.0f} cm³")
             print(f"   Distance: {vehicle_data.get('distance', 0):.2f} km")
-            print(f"   Cost: ${vehicle_data.get('cost', 0):.2f}")
+            print(f"   Cost: {vehicle_data.get('cost', 0):.2f}")
             if 'route_node_ids' in vehicle_data:
                 route_seq = ' → '.join(vehicle_data['route_node_ids'][:5])
                 if len(vehicle_data['route_node_ids']) > 5:
@@ -220,7 +220,7 @@ class VehicleController:
             f"Vehicles: {stats['vehicle_count']}\n"
             f"Deliveries: {stats['deliveries']}\n"
             f"Distance: {stats['distance']:.2f} km\n"
-            f"Cost: ${stats['cost']:.2f}\n"
+            f"Cost: {stats['cost']:.2f}\n"
             f"Weight: {stats['weight']:.2f} kg\n\n"
             f"Data source: {data_source} optimization"
         )

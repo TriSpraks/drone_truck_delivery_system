@@ -84,7 +84,7 @@ class VehicleManager:
                 }
                 print(f"  {vehicle_name} (ID: {drone.get('vehicle_id')}): {len(deliveries)} deliveries")
                 print(f"    Route: {' → '.join(full_route)}")
-                print(f"    Distance: {drone.get('distance', 0):.2f} km | Cost: ${drone.get('cost', 0):.2f}")
+                print(f"    Distance: {drone.get('distance', 0):.2f} km | Cost: {drone.get('cost', 0):.2f}")
                 print(f"    Weight: {drone.get('total_weight', 0):.2f} kg | Volume: {drone.get('total_volume', 0):.0f}")
         
         # Process trucks from backend solution
@@ -120,7 +120,7 @@ class VehicleManager:
                 }
                 print(f"  {vehicle_name} (ID: {vehicle_id}): {len(deliveries)} deliveries")
                 print(f"    Route: {' → '.join(full_route)}")
-                print(f"    Distance: {truck.get('distance', 0):.2f} km | Cost: ${truck.get('cost', 0):.2f}")
+                print(f"    Distance: {truck.get('distance', 0):.2f} km | Cost: {truck.get('cost', 0):.2f}")
                 print(f"    Weight: {truck.get('total_weight', 0):.2f} kg ({capacity_util.get('weight_percent', 0):.1f}%)")
                 print(f"    Volume: {truck.get('total_volume', 0):.0f} ({capacity_util.get('volume_percent', 0):.1f}%)")
         

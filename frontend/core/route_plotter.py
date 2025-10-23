@@ -118,7 +118,7 @@ def build_map_from_solution(
             <b>{vehicle_id}</b><br>
             Route: {' → '.join(route_nodes)}<br>
             Distance: {distance:.2f} km<br>
-            Cost: ${cost:.2f}<br>
+            Cost: {cost:.2f}<br>
             Weight: {weight:.2f} kg<br>
             Volume: {volume:.0f} units
             """
@@ -169,7 +169,7 @@ def build_map_from_solution(
             <b>{vehicle_id}</b><br>
             Assigned: {', '.join(route_nodes)}<br>
             Distance: {distance:.2f} km<br>
-            Cost: ${cost:.2f}<br>
+            Cost: {cost:.2f}<br>
             Weight: {weight:.2f} kg<br>
             Volume: {volume:.0f} units<br>
             Capacity: {cap_weight:.1f}% weight, {cap_volume:.1f}% volume
