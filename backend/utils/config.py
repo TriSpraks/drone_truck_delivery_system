@@ -29,9 +29,9 @@ TRUCK_SPEED = 96.0  # km/h (≈60 mph from general truck spec)
 # ─────────────────────────────── 
 # Total cost weights (from provided α, β, γ) 
 # ─────────────────────────────── 
-ALPHA = 0.4119  # delivery speed weight
-BETA = 0.2429   # noise score weight
-GAMMA = 0.3452  # CO₂ score weight
+ALPHA = 0.430  # delivery speed weight
+BETA = 0.259   # noise score weight
+GAMMA = 0.311  # CO₂ score weight
 
 # ─────────────────────────────── 
 # Fuel Truck (Tata LPT 1212 Diesel) 
